@@ -23,5 +23,5 @@ _testmain.go
 *.test
 *.prof
 
-/github.com/PuerkitoBio
-/github.com/steveyen
+src/github.com/PuerkitoBio
+src/github.com/steveyen
