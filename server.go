@@ -30,5 +30,7 @@ func viewData(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	http.HandleFunc("/get", viewData)
-	http.ListenAndServe(":8080", nil)
+
+	log.Println("Listening on http://localhost:5000/")
+	log.Fatal(http.ListenAndServe(":5000", nil))
 }
