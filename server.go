@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/jurvis/scrape"
@@ -22,7 +22,7 @@ func viewData(w http.ResponseWriter, r *http.Request) {
 
 	b, err := json.Marshal(group)
 	if err != nil {
-		fmt.Println("error:", err)
+		log.Println("error:", err)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(b)
