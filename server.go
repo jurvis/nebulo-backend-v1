@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/jurvis/scrape"
+	"github.com/jurvis/model"
 )
 
 func viewData(w http.ResponseWriter, r *http.Request) {
@@ -15,9 +15,9 @@ func viewData(w http.ResponseWriter, r *http.Request) {
 		Temp string
 	}
 	group := airquality{
-		PSI:  scrape.GetData("PSI"),
-		PM25: scrape.GetData("PM25"),
-		Temp: scrape.GetData("Temp"),
+		PSI:  model.RetrieveData("PSI"),
+		PM25: model.RetrieveData("PM25"),
+		Temp: model.RetrieveData("Temp"),
 	}
 
 	b, err := json.Marshal(group)

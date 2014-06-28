@@ -1,11 +1,9 @@
 package scrape
 
 import (
-	"fmt"
 	"github.com/PuerkitoBio/goquery"
-	"github.com/steveyen/gkvlite"
 	"log"
-	"os"
+	"time"
 )
 
 type WeatherData struct {
@@ -36,43 +34,14 @@ func AQICN_Scrape() WeatherData {
 	return w
 }
 
-func storeData() {
-	fmt.Println("Scraping...")
-	w := AQICN_Scrape()
-	file, err := os.Create("/tmp/test.gkvlite")
-	if err != nil {
-		fmt.Println("Unable to create .gkvlite file")
+func DoScrape() WeatherData {
+	for c := 0; c > 0; c++ {
+		if c == 0 {
+			return AQICN_Scrape()
+		} else {
+			time.Sleep(5)
+			return AQICN_Scrape()
+		}
 	}
-	s, err := gkvlite.NewStore(file)
-	c := s.SetCollection("weatherData", nil)
-
-	c.Set([]byte("PSI"), []byte(w.PSI))
-	c.Set([]byte("PM25"), []byte(w.PM25))
-	c.Set([]byte("Temp"), []byte(w.Temperature))
-
-	s.Flush()
-}
-
-func GetData(d string) string {
-	if _, err := os.Stat("/tmp/test.gkvlite"); os.IsNotExist(err) {
-		storeData()
-	}
-	f2, err := os.Open("/tmp/test.gkvlite")
-	s2, err := gkvlite.NewStore(f2)
-	c2 := s2.GetCollection("weatherData")
-
-	PSI, err := c2.Get([]byte("PSI"))
-	PM25, err := c2.Get([]byte("PM25"))
-	Temp, err := c2.Get([]byte("Temp"))
-	fmt.Println(err)
-	switch d {
-	case "PSI":
-		return string(PSI)
-	case "PM25":
-		return string(PM25)
-	case "Temp":
-		return string(Temp)
-	default:
-		return "not valid"
-	}
+	return AQICN_Scrape()
 }
