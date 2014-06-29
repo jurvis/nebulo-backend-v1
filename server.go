@@ -9,16 +9,21 @@ import (
 )
 
 func viewData(w http.ResponseWriter, r *http.Request) {
+	m := make(map[string]string)
+	m["PSI"] = model.RetrieveData("PSI")
+	m["PM25"] = model.RetrieveData("PM25")
+	m["Temp"] = model.RetrieveData("Temp")
+
 	type airquality struct {
-		PSI  string
-		PM25 string
-		Temp string
+		Status      string            `json:"status"`
+		WeatherData map[string]string `json:"weather"`
 	}
 	group := airquality{
-		PSI:  model.RetrieveData("PSI"),
-		PM25: model.RetrieveData("PM25"),
-		Temp: model.RetrieveData("Temp"),
+		Status:      model.RetrieveData("status"),
+		WeatherData: m,
 	}
+
+	log.Println(m)
 
 	b, err := json.Marshal(group)
 	if err != nil {

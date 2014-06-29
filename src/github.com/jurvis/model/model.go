@@ -1,20 +1,20 @@
 package model
 
 import (
-	"fmt"
 	"github.com/jurvis/scrape"
 	"github.com/steveyen/gkvlite"
 	"log"
 	"os"
+	"strconv"
 	"time"
 )
 
 func storeData() {
-	fmt.Println("Scraping...")
+	log.Println("Scraping...")
 	w := scrape.AQICN_Scrape()
 	file, err := os.Create("/tmp/test.gkvlite")
 	if err != nil {
-		fmt.Println("Unable to create .gkvlite file")
+		log.Println("Unable to create .gkvlite file")
 	}
 	s, err := gkvlite.NewStore(file)
 	c := s.SetCollection("weatherData", nil)
@@ -24,6 +24,22 @@ func storeData() {
 	c.Set([]byte("Temp"), []byte(w.Temperature))
 
 	s.Flush()
+}
+
+func checkWeather(pm25 string) string {
+	int_pm25, err := strconv.Atoi(pm25)
+	if err != nil {
+		log.Println("unable to convert string")
+	}
+
+	var status string
+	if int_pm25 > 50 {
+		status = "oh no."
+	} else {
+		status = "it's clear."
+	}
+
+	return status
 }
 
 func RetrieveData(d string) string {
@@ -39,6 +55,9 @@ func RetrieveData(d string) string {
 	PSI, err := c2.Get([]byte("PSI"))
 	PM25, err := c2.Get([]byte("PM25"))
 	Temp, err := c2.Get([]byte("Temp"))
+
+	status := checkWeather(string(PM25))
+
 	log.Println(err)
 	switch d {
 	case "PSI":
@@ -48,6 +67,6 @@ func RetrieveData(d string) string {
 	case "Temp":
 		return string(Temp)
 	default:
-		return "not valid"
+		return status
 	}
 }

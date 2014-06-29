@@ -3,7 +3,6 @@ package scrape
 import (
 	"github.com/PuerkitoBio/goquery"
 	"log"
-	"time"
 )
 
 type WeatherData struct {
@@ -32,16 +31,4 @@ func AQICN_Scrape() WeatherData {
 		return false
 	})
 	return w
-}
-
-func DoScrape() WeatherData {
-	for c := 0; c > 0; c++ {
-		if c == 0 {
-			return AQICN_Scrape()
-		} else {
-			time.Sleep(5)
-			return AQICN_Scrape()
-		}
-	}
-	return AQICN_Scrape()
 }
