@@ -34,6 +34,7 @@ func viewData(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	model.StoreData()
 	http.HandleFunc("/get", viewData)
 
 	log.Println("Listening on http://localhost:5000/")

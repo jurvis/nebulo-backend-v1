@@ -9,21 +9,49 @@ import (
 	"time"
 )
 
-func storeData() {
-	log.Println("Scraping...")
-	w := scrape.AQICN_Scrape()
+func StoreData() {
+	// run this on first run
 	file, err := os.Create("/tmp/test.gkvlite")
 	if err != nil {
 		log.Println("Unable to create .gkvlite file")
 	}
+	w := scrape.AQICN_Scrape()
 	s, err := gkvlite.NewStore(file)
+	if err != nil {
+		log.Println("Cannot create new store")
+	}
 	c := s.SetCollection("weatherData", nil)
 
 	c.Set([]byte("PSI"), []byte(w.PSI))
 	c.Set([]byte("PM25"), []byte(w.PM25))
 	c.Set([]byte("Temp"), []byte(w.Temperature))
-
 	s.Flush()
+
+	// set up a goroutine to scrape every 1 Hour
+	ticker := time.NewTicker(1 * time.Hour)
+	quit := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				log.Println("Scraping...")
+				f2, err := os.Open("/tmp/test.gkvlite")
+				if err != nil {
+					log.Println("Unable to open .gkvlite file")
+				}
+				s2, err := gkvlite.NewStore(f2)
+				c2 := s2.GetCollection("weatherData")
+				c2.Set([]byte("PSI"), []byte(w.PSI))
+				c2.Set([]byte("PM25"), []byte(w.PM25))
+				c2.Set([]byte("Temp"), []byte(w.Temperature))
+				s2.Flush()
+			case <-quit:
+				ticker.Stop()
+				log.Println("Stopped the ticker!")
+				return
+			}
+		}
+	}()
 }
 
 func checkWeather(pm25 string) string {
@@ -47,22 +75,20 @@ func checkWeather(pm25 string) string {
 }
 
 func RetrieveData(d string) string {
-	// check if file exists or if file is more than an hour old (to refresh data)
-	if info, err := os.Stat("/tmp/test.gkvlite"); os.IsNotExist(err) || time.Since(info.ModTime()).Hours() > 1 {
-		storeData()
+
+	f3, err := os.Open("/tmp/test.gkvlite")
+	s3, err := gkvlite.NewStore(f3)
+	c3 := s3.GetCollection("weatherData")
+
+	PSI, err := c3.Get([]byte("PSI"))
+	PM25, err := c3.Get([]byte("PM25"))
+	Temp, err := c3.Get([]byte("Temp"))
+	if err != nil {
+		log.Println(err)
 	}
-
-	f2, err := os.Open("/tmp/test.gkvlite")
-	s2, err := gkvlite.NewStore(f2)
-	c2 := s2.GetCollection("weatherData")
-
-	PSI, err := c2.Get([]byte("PSI"))
-	PM25, err := c2.Get([]byte("PM25"))
-	Temp, err := c2.Get([]byte("Temp"))
 
 	status := checkWeather(string(PM25))
 
-	log.Println(err)
 	switch d {
 	case "PSI":
 		return string(PSI)
