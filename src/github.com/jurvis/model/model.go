@@ -28,7 +28,7 @@ func StoreData() {
 	s.Flush()
 
 	// set up a goroutine to scrape every 1 Hour
-	ticker := time.NewTicker(1 * time.Hour)
+	ticker := time.NewTicker(30 * time.Minute)
 	quit := make(chan struct{})
 	go func() {
 		for {
