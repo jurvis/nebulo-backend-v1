@@ -4,9 +4,21 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/jurvis/model"
 )
+
+func Log(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		log.Printf("%s %s %s", r.RemoteAddr, r.Method, r.URL)
+		log.Printf("Completed in %s", time.Now().Sub(start).String())
+
+		handler.ServeHTTP(w, r)
+	})
+}
 
 func viewData(w http.ResponseWriter, r *http.Request) {
 	m := make(map[string]string)
@@ -38,5 +50,5 @@ func main() {
 	http.HandleFunc("/get", viewData)
 
 	log.Println("Listening on http://localhost:5000/")
-	log.Fatal(http.ListenAndServe(":5000", nil))
+	log.Fatal(http.ListenAndServe(":5000", Log(http.DefaultServeMux)))
 }
