@@ -1,6 +1,9 @@
 package model
 
 import (
+	"encoding/json"
+	"fmt"
+	"github.com/ChimeraCoder/anaconda"
 	"github.com/jurvis/scrape"
 	"github.com/steveyen/gkvlite"
 	"log"
@@ -9,9 +12,48 @@ import (
 	"time"
 )
 
+type Configuration struct {
+	Application []string
+	Consumer    []string
+}
+
+func tweetData(pm25 string, psi string) {
+	c := getTwitterConfig("consumer")
+	a := getTwitterConfig("application")
+	anaconda.SetConsumerKey(a[0])
+	anaconda.SetConsumerSecret(a[1])
+
+	api := anaconda.NewTwitterApi(c[0], c[1])
+	advisory := checkWeather(pm25)
+	s := fmt.Sprintf("'%s' Current Current PSI: %s, PM2.5: %s.", advisory, pm25, psi)
+	_, err := api.PostTweet(s, nil)
+	if err != nil {
+		log.Println(err)
+	}
+}
+
+func getTwitterConfig(kind string) []string {
+	file, _ := os.Open("twitter-config.json")
+	decoder := json.NewDecoder(file)
+	configuration := Configuration{}
+	err := decoder.Decode(&configuration)
+	if err != nil {
+		log.Println("error: ", err)
+	}
+
+	switch kind {
+	case "consumer":
+		return configuration.Consumer
+	case "application":
+		return configuration.Application
+	default:
+		return configuration.Consumer
+	}
+}
+
 func StoreData() {
 	// run this on first run
-	file, err := os.Create("/tmp/test.gkvlite")
+	file, err := os.Create("/tmp/weather.gkvlite")
 	if err != nil {
 		log.Println("Unable to create .gkvlite file")
 	}
@@ -27,6 +69,8 @@ func StoreData() {
 	c.Set([]byte("Temp"), []byte(w.Temperature))
 	s.Flush()
 
+	tweetData(w.PM25, w.PSI)
+
 	// set up a goroutine to scrape every 1 Hour
 	ticker := time.NewTicker(30 * time.Minute)
 	quit := make(chan struct{})
@@ -35,7 +79,7 @@ func StoreData() {
 			select {
 			case <-ticker.C:
 				log.Println("Scraping...")
-				f2, err := os.Open("/tmp/test.gkvlite")
+				f2, err := os.Open("/tmp/weather.gkvlite")
 				if err != nil {
 					log.Println("Unable to open .gkvlite file")
 				}
@@ -44,6 +88,7 @@ func StoreData() {
 				c2.Set([]byte("PSI"), []byte(w.PSI))
 				c2.Set([]byte("PM25"), []byte(w.PM25))
 				c2.Set([]byte("Temp"), []byte(w.Temperature))
+				tweetData(w.PM25, w.PSI)
 				s2.Flush()
 			case <-quit:
 				ticker.Stop()
@@ -76,7 +121,7 @@ func checkWeather(pm25 string) string {
 
 func RetrieveData(d string) string {
 
-	f3, err := os.Open("/tmp/test.gkvlite")
+	f3, err := os.Open("/tmp/weather.gkvlite")
 	s3, err := gkvlite.NewStore(f3)
 	c3 := s3.GetCollection("weatherData")
 

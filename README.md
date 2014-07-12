@@ -20,3 +20,5 @@ source env.sh
 
 To run:
 ` go run server.go `
+
+You might also want to edit the twitter-config.json file to your apps's requirements.
