@@ -11,7 +11,7 @@ import (
 
 func StoreData() {
 	// run this on first run
-	file, err := os.Create("/tmp/test.gkvlite")
+	file, err := os.Create("/tmp/weather.gkvlite")
 	if err != nil {
 		log.Println("Unable to create .gkvlite file")
 	}
@@ -28,7 +28,7 @@ func StoreData() {
 	s.Flush()
 
 	// set up a goroutine to scrape every 1 Hour
-	ticker := time.NewTicker(30 * time.Minute)
+	ticker := time.NewTicker(3 * time.Second)
 	quit := make(chan struct{})
 	go func() {
 		for {
@@ -36,7 +36,8 @@ func StoreData() {
 			case <-ticker.C:
 				log.Println("Scraping...")
 				w := scrape.AQICN_Scrape()
-				f2, err := os.Open("/tmp/test.gkvlite")
+				log.Println(w)
+				f2, err := os.Open("/tmp/weather.gkvlite")
 				if err != nil {
 					log.Println("Unable to open .gkvlite file")
 				}
@@ -77,7 +78,7 @@ func checkWeather(pm25 string) string {
 
 func RetrieveData(d string) string {
 
-	f3, err := os.Open("/tmp/test.gkvlite")
+	f3, err := os.Open("/tmp/weather.gkvlite")
 	s3, err := gkvlite.NewStore(f3)
 	c3 := s3.GetCollection("weatherData")
 
