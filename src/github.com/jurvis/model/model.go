@@ -90,8 +90,8 @@ func StoreData() {
 				c2.Set([]byte("PSI"), []byte(w.PSI))
 				c2.Set([]byte("PM25"), []byte(w.PM25))
 				c2.Set([]byte("Temp"), []byte(w.Temperature))
-				tweetData(w.PM25, w.PSI)
 				s2.Flush()
+				tweetData(w.PM25, w.PSI)
 			case <-quit:
 				ticker.Stop()
 				log.Println("Stopped the ticker!")
