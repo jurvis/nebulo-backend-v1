@@ -127,6 +127,7 @@ func RetrieveData(d string) string {
 	s3, err := gkvlite.NewStore(f3)
 	c3 := s3.GetCollection("weatherData")
 
+	s3.Flush()
 	PSI, err := c3.Get([]byte("PSI"))
 	PM25, err := c3.Get([]byte("PM25"))
 	Temp, err := c3.Get([]byte("Temp"))
