@@ -71,8 +71,8 @@ func StoreData() {
 
 	tweetData(w.PM25, w.PSI)
 
-	// set up a goroutine to scrape every 1 Hour
-	ticker := time.NewTicker(3 * time.Second)
+	// set up a goroutine to scrape every half Hour
+	ticker := time.NewTicker(30 * time.Minute)
 	quit := make(chan struct{})
 	go func() {
 		for {
