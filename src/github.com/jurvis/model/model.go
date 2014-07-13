@@ -72,19 +72,21 @@ func StoreData() {
 	tweetData(w.PM25, w.PSI)
 
 	// set up a goroutine to scrape every 1 Hour
-	ticker := time.NewTicker(30 * time.Minute)
+	ticker := time.NewTicker(3 * time.Second)
 	quit := make(chan struct{})
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
 				log.Println("Scraping...")
+				w := scrape.AQICN_Scrape()
 				f2, err := os.Open("/tmp/weather.gkvlite")
 				if err != nil {
 					log.Println("Unable to open .gkvlite file")
 				}
 				s2, err := gkvlite.NewStore(f2)
 				c2 := s2.GetCollection("weatherData")
+				log.Println(w)
 				c2.Set([]byte("PSI"), []byte(w.PSI))
 				c2.Set([]byte("PM25"), []byte(w.PM25))
 				c2.Set([]byte("Temp"), []byte(w.Temperature))
