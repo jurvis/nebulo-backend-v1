@@ -59,15 +59,14 @@ func StoreData() {
 	}
 	w := scrape.AQICN_Scrape()
 	s, err := gkvlite.NewStore(file)
+	defer s.Flush()
 	if err != nil {
 		log.Println("Cannot create new store")
 	}
 	c := s.SetCollection("weatherData", nil)
-
 	c.Set([]byte("PSI"), []byte(w.PSI))
 	c.Set([]byte("PM25"), []byte(w.PM25))
 	c.Set([]byte("Temp"), []byte(w.Temperature))
-	s.Flush()
 
 	tweetData(w.PM25, w.PSI)
 
@@ -80,17 +79,11 @@ func StoreData() {
 			case <-ticker.C:
 				log.Println("Scraping...")
 				w := scrape.AQICN_Scrape()
-				f2, err := os.Open("/tmp/weather.gkvlite")
-				if err != nil {
-					log.Println("Unable to open .gkvlite file")
-				}
-				s2, err := gkvlite.NewStore(f2)
-				c2 := s2.GetCollection("weatherData")
-				log.Println(w)
+				c2 := s.GetCollection("weatherData")
 				c2.Set([]byte("PSI"), []byte(w.PSI))
 				c2.Set([]byte("PM25"), []byte(w.PM25))
 				c2.Set([]byte("Temp"), []byte(w.Temperature))
-				s2.Flush()
+				s.Flush()
 				tweetData(w.PM25, w.PSI)
 			case <-quit:
 				ticker.Stop()
@@ -126,8 +119,9 @@ func RetrieveData(d string) string {
 	f3, err := os.Open("/tmp/weather.gkvlite")
 	s3, err := gkvlite.NewStore(f3)
 	c3 := s3.GetCollection("weatherData")
-
+	defer s3.Close()
 	s3.Flush()
+
 	PSI, err := c3.Get([]byte("PSI"))
 	PM25, err := c3.Get([]byte("PM25"))
 	Temp, err := c3.Get([]byte("Temp"))
