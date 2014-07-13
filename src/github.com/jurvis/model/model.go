@@ -35,6 +35,7 @@ func StoreData() {
 			select {
 			case <-ticker.C:
 				log.Println("Scraping...")
+				w := scrape.AQICN_Scrape()
 				f2, err := os.Open("/tmp/test.gkvlite")
 				if err != nil {
 					log.Println("Unable to open .gkvlite file")
