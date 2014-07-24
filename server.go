@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/jurvis/model"
-	"github.com/yvasiyarov/gorelic"
 )
 
 func Log(handler http.Handler) http.Handler {
@@ -48,11 +47,7 @@ func viewData(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	model.StoreData()
-	agent := gorelic.NewAgent()
-	agent.Verbose = true
-	agent.NewrelicLicense = ""
-	agent.Run()
-	http.HandleFunc("/get", agent.WrapHTTPHandlerFunc(viewData))
+	http.HandleFunc("/get", viewData)
 
 	log.Println("Listening on http://localhost:5000/")
 	log.Fatal(http.ListenAndServe(":5000", Log(http.DefaultServeMux)))
