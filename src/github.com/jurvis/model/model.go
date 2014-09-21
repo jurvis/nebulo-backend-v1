@@ -25,7 +25,7 @@ func tweetData(pm25 string, psi string) {
 
 	api := anaconda.NewTwitterApi(c[0], c[1])
 	advisory := checkWeather(pm25)
-	s := fmt.Sprintf("'%s' Current PSI: %s, PM2.5: %s. #hazesg", advisory, psi, pm25)
+	s := fmt.Sprintf("'%s' Current PSI: %s, PM2.5: %s. #sghaze", advisory, psi, pm25)
 	_, err := api.PostTweet(s, nil)
 	if err != nil {
 		log.Println(err)
