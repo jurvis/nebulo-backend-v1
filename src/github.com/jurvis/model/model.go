@@ -104,7 +104,7 @@ func checkWeather(pm25 string) string {
 	if int_pm25 > 200 {
 		status = "Stay Indoors."
 	} else if int_pm25 > 100 {
-		status = "The Air is Bad."
+		status = "The Air Is Bad."
 	} else if int_pm25 > 50 {
 		status = "Moderate."
 	} else {
