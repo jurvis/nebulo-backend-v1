@@ -36,7 +36,7 @@ func postUUID(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		log.Println(r.Body)
-		response := result{status: "Houston, we have a problem."}
+		response := result{Status: "Houston, we have a problem."}
 		b, err := json.Marshal(response)
 		if err != nil {
 			log.Println("error:", err)
@@ -46,7 +46,7 @@ func postUUID(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 
-	response := result{status: "success."}
+	response := result{Status: "success."}
 	b, err := json.Marshal(response)
 	if err != nil {
 		log.Println("error:", err)
