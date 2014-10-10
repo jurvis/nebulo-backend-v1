@@ -20,6 +20,43 @@ func Log(handler http.Handler) http.Handler {
 	})
 }
 
+type UUID struct {
+	UUID       string
+	DeviceType string
+}
+
+func postUUID(w http.ResponseWriter, r *http.Request) {
+	type result struct {
+		Status string
+	}
+
+	dec := json.NewDecoder(r.Body)
+	var k UUID
+	err := dec.Decode(&k)
+	if err != nil {
+		log.Println(err)
+		log.Println(r.Body)
+		response := result{status: "Houston, we have a problem."}
+		b, err := json.Marshal(response)
+		if err != nil {
+			log.Println("error:", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(b)
+		panic(err)
+	}
+
+	response := result{status: "success."}
+	b, err := json.Marshal(response)
+	if err != nil {
+		log.Println("error:", err)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(b)
+
+	log.Println(k.UUID)
+}
+
 func viewData(w http.ResponseWriter, r *http.Request) {
 	m := make(map[string]string)
 	m["PSI"] = model.RetrieveData("PSI")
@@ -48,6 +85,7 @@ func viewData(w http.ResponseWriter, r *http.Request) {
 func main() {
 	model.StoreData()
 	http.HandleFunc("/get", viewData)
+	http.HandleFunc("/post", postUUID)
 
 	log.Println("Listening on http://localhost:5000/")
 	log.Fatal(http.ListenAndServe(":5000", Log(http.DefaultServeMux)))
