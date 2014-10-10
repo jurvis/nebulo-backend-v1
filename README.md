@@ -20,3 +20,29 @@ source env.sh
 
 To run:
 ` go run server.go `
+
+### Brief API Docs
+#### GET
+> `/get` returns the current air quality in Singapore
+```json
+{
+  "status": "Moderate.",
+    "weather": {
+    "PM25": "78",
+    "PSI": "66",
+    "Temp": "29"
+  
+    }
+
+}
+```
+
+### POST
+1. `/post` requires a json body, below is a sample:
+```json
+{
+  "UUID": "hello world",
+  "DeviceType": "iOS"
+
+}
+```
