@@ -23,7 +23,7 @@ To run:
 
 ### Brief API Docs
 #### GET
-> `/get` returns the current air quality in Singapore
+1. `/get` returns the current air quality in Singapore
 ```json
 {
   "status": "Moderate.",
