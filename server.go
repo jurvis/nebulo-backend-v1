@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/jurvis/db"
 	"log"
 	"net/http"
 	"time"
@@ -36,25 +37,38 @@ func postUUID(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		log.Println(r.Body)
-		response := result{Status: "Houston, we have a problem."}
-		b, err := json.Marshal(response)
+		response := map[string]bool{"success": false}
+		reply, err := json.Marshal(response)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(reply)
+		panic(err)
+	}
+
+	db, err := db.Dbconnect()
+	if err != nil {
+		log.Println("Unable to connect to DB")
+	}
+	defer db.Close()
+
+	_, err = db.Query("INSERT INTO devicetokens (uuid, devicetype) VALUES ($1, $2)", k.UUID, k.DeviceType)
+	if err != nil {
+		log.Println(err)
+		response := map[string]bool{"success": false}
+		reply, err := json.Marshal(response)
 		if err != nil {
 			log.Println("error:", err)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(b)
-		panic(err)
+		w.Write(reply)
+	} else {
+		response := map[string]bool{"success": true}
+		reply, err := json.Marshal(response)
+		if err != nil {
+			log.Println("error:", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(reply)
 	}
-
-	response := result{Status: "success."}
-	b, err := json.Marshal(response)
-	if err != nil {
-		log.Println("error:", err)
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(b)
-
-	log.Println(k.UUID)
 }
 
 func viewData(w http.ResponseWriter, r *http.Request) {
