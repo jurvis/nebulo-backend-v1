@@ -24,7 +24,7 @@ func main() {
 		u = append(u, uuid)
 	}
 
-	client := apns.NewClient("gateway.sandbox.push.apple.com:2195", "NebuloCert.pem", "apns-dev.pem")
+	client := apns.NewClient("gateway.push.apple.com:2195", "NebuloCert.pem", "apns-dev.pem")
 
 	payload := apns.NewPayload()
 	payload.Alert = "Hello!"
