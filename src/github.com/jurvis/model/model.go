@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/jurvis/push"
 	"github.com/jurvis/scrape"
 	"github.com/steveyen/gkvlite"
 	"log"
@@ -8,6 +9,22 @@ import (
 	"strconv"
 	"time"
 )
+
+func callAPNS(pm25 string) {
+	int_pm25, err := strconv.Atoi(pm25)
+	if err != nil {
+		log.Println("unable to convert string")
+	}
+	if int_pm25 > 100 {
+		var status string
+		if int_pm25 > 200 {
+			status = "The air is now hazardous, avoid the outdoors!"
+		} else {
+			status = "The air is now in an unhealthy range, take care."
+		}
+		push.PushAPNS(status)
+	}
+}
 
 func StoreData() {
 	// run this on first run
@@ -25,6 +42,7 @@ func StoreData() {
 	c.Set([]byte("PSI"), []byte(w.PSI))
 	c.Set([]byte("PM25"), []byte(w.PM25))
 	c.Set([]byte("Temp"), []byte(w.Temperature))
+	callAPNS(w.PM25)
 
 	// set up a goroutine to scrape every half Hour
 	ticker := time.NewTicker(30 * time.Minute)
@@ -39,6 +57,7 @@ func StoreData() {
 				c2.Set([]byte("PSI"), []byte(w.PSI))
 				c2.Set([]byte("PM25"), []byte(w.PM25))
 				c2.Set([]byte("Temp"), []byte(w.Temperature))
+				callAPNS(w.PM25)
 				s.Flush()
 			case <-quit:
 				ticker.Stop()

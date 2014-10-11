@@ -1,4 +1,4 @@
-package main
+package push
 
 import (
 	apns "github.com/anachronistic/apns"
@@ -6,7 +6,7 @@ import (
 	"log"
 )
 
-func main() {
+func PushAPNS(alert string) {
 	db, err := db.Dbconnect()
 	if err != nil {
 		log.Println("Unable to connect to DB")
@@ -27,7 +27,7 @@ func main() {
 	client := apns.NewClient("gateway.push.apple.com:2195", "NebuloCert.pem", "apns-dev.pem")
 
 	payload := apns.NewPayload()
-	payload.Alert = "Hello!"
+	payload.Alert = alert
 	payload.Sound = "bingbong.aiff"
 
 	for _, uuid := range u {
