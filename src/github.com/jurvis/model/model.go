@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func callAPNS(pm25 string) {
+func callPush(pm25 string) {
 	int_pm25, err := strconv.Atoi(pm25)
 	if err != nil {
 		log.Println("unable to convert string")
@@ -22,12 +22,12 @@ func callAPNS(pm25 string) {
 		} else {
 			status = "The air is now in an unhealthy range, take care."
 		}
-		push.PushAPNS(status)
+		push.PushNotif(status)
 	}
 }
 
 func HandlePush() {
-	log.Println("Spawning APNS...")
+	log.Println("Spawning Push...")
 
 	log.Println("Fetching Data for Push...")
 	f4, err := os.Open("/tmp/weather.gkvlite")
@@ -37,7 +37,7 @@ func HandlePush() {
 	s4.Flush()
 
 	PM25, err := c4.Get([]byte("PM25"))
-	callAPNS(string(PM25))
+	callPush(string(PM25))
 	if err != nil {
 		log.Println(err)
 	}
@@ -57,7 +57,7 @@ func HandlePush() {
 				s3.Flush()
 
 				PM25, err := c3.Get([]byte("PM25"))
-				callAPNS(string(PM25))
+				callPush(string(PM25))
 				if err != nil {
 					log.Println(err)
 				}
