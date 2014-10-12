@@ -3,7 +3,6 @@
 *.a
 *.so
 
-
 # Folders
 _obj
 _test
@@ -27,14 +26,12 @@ _testmain.go
 src/code.google.com
 src/github.com/PuerkitoBio
 src/github.com/steveyen
-
-
-src/github.com/lib/
 src/github.com/ChimeraCoder/
 src/github.com/garyburd/
-src/github.com/anachronistic/
 src/github.com/yvasiyarov/
-twitter-config.json
-# Sensitive Config Files
+src/github.com/lib/
+src/github.com/anachronistic/
+
+# Sensitive config files 
 *.pem
 *.gcfg

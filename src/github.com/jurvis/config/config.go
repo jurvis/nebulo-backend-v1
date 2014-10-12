@@ -34,4 +34,5 @@ func DbConfig() DbCfg {
 func TwitterConfig() TwCfg {
 	var cfg TwCfg
 	gcfg.ReadFileInto(&cfg, "twitterconfig.gcfg")
+	return cfg
 }
