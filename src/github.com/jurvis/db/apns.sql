@@ -3,5 +3,3 @@ CREATE TABLE devicetokens (
 	uuid text not null unique,
 	devicetype text not null
 );
-
-INSERT INTO devicetokens (uuid, devicetype) VALUES ('helloworld', 'iOS');
