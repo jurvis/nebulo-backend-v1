@@ -26,6 +26,8 @@ func callAPNS(pm25 string) {
 			status = "The air is now in an unhealthy range, take care."
 		}
 		push.PushAPNS(status)
+	} else {
+		log.Println("PM2.5 less than 100, nothing to push.")
 	}
 }
 
