@@ -26,6 +26,50 @@ func callAPNS(pm25 string) {
 	}
 }
 
+func HandlePush() {
+	log.Println("Spawning APNS...")
+
+	log.Println("Fetching Data for Push...")
+	f4, err := os.Open("/tmp/weather.gkvlite")
+	s4, err := gkvlite.NewStore(f4)
+	c4 := s4.GetCollection("weatherData")
+	defer s4.Close()
+	s4.Flush()
+
+	PM25, err := c4.Get([]byte("PM25"))
+	callAPNS(string(PM25))
+	if err != nil {
+		log.Println(err)
+	}
+
+	// set up a goroutine to run APNS
+	ticker := time.NewTicker(3 * time.Hour)
+	quit := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				log.Println("Fetching Data for Push...")
+				f3, err := os.Open("/tmp/weather.gkvlite")
+				s3, err := gkvlite.NewStore(f3)
+				c3 := s3.GetCollection("weatherData")
+				defer s3.Close()
+				s3.Flush()
+
+				PM25, err := c3.Get([]byte("PM25"))
+				callAPNS(string(PM25))
+				if err != nil {
+					log.Println(err)
+				}
+			case <-quit:
+				ticker.Stop()
+				log.Println("Stopped the ticker!")
+				return
+			}
+		}
+	}()
+}
+
 func StoreData() {
 	// run this on first run
 	file, err := os.Create("/tmp/weather.gkvlite")
@@ -42,7 +86,6 @@ func StoreData() {
 	c.Set([]byte("PSI"), []byte(w.PSI))
 	c.Set([]byte("PM25"), []byte(w.PM25))
 	c.Set([]byte("Temp"), []byte(w.Temperature))
-	callAPNS(w.PM25)
 
 	// set up a goroutine to scrape every half Hour
 	ticker := time.NewTicker(30 * time.Minute)
@@ -57,7 +100,6 @@ func StoreData() {
 				c2.Set([]byte("PSI"), []byte(w.PSI))
 				c2.Set([]byte("PM25"), []byte(w.PM25))
 				c2.Set([]byte("Temp"), []byte(w.Temperature))
-				callAPNS(w.PM25)
 				s.Flush()
 			case <-quit:
 				ticker.Stop()
