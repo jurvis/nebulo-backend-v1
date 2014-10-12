@@ -47,6 +47,7 @@ func viewData(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	model.HandlePush()
 	model.StoreData()
 	agent := gorelic.NewAgent()
 	agent.Verbose = true

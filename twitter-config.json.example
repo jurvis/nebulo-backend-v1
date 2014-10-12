@@ -1,4 +1,0 @@
-{
-	"application" : ["api-key", "api-secret"],
-	"consumer" : ["access-token", "access-secret"]
-}

@@ -1,9 +1,10 @@
 package model
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/ChimeraCoder/anaconda"
+	"github.com/jurvis/config"
+	"github.com/jurvis/push"
 	"github.com/jurvis/scrape"
 	"github.com/steveyen/gkvlite"
 	"log"
@@ -12,42 +13,78 @@ import (
 	"time"
 )
 
-type Configuration struct {
-	Application []string
-	Consumer    []string
+func callAPNS(pm25 string) {
+	int_pm25, err := strconv.Atoi(pm25)
+	if err != nil {
+		log.Println("unable to convert string")
+	}
+	if int_pm25 > 100 {
+		var status string
+		if int_pm25 > 200 {
+			status = "The air is now hazardous, avoid the outdoors!"
+		} else {
+			status = "The air is now in an unhealthy range, take care."
+		}
+		push.PushAPNS(status)
+	}
+}
+
+func HandlePush() {
+	log.Println("Spawning APNS...")
+
+	log.Println("Fetching Data for Push...")
+	f4, err := os.Open("/tmp/weather.gkvlite")
+	s4, err := gkvlite.NewStore(f4)
+	c4 := s4.GetCollection("weatherData")
+	defer s4.Close()
+	s4.Flush()
+
+	PM25, err := c4.Get([]byte("PM25"))
+	callAPNS(string(PM25))
+	if err != nil {
+		log.Println(err)
+	}
+
+	// set up a goroutine to run APNS
+	ticker := time.NewTicker(3 * time.Hour)
+	quit := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				log.Println("Fetching Data for Push...")
+				f3, err := os.Open("/tmp/weather.gkvlite")
+				s3, err := gkvlite.NewStore(f3)
+				c3 := s3.GetCollection("weatherData")
+				defer s3.Close()
+				s3.Flush()
+
+				PM25, err := c3.Get([]byte("PM25"))
+				callAPNS(string(PM25))
+				if err != nil {
+					log.Println(err)
+				}
+			case <-quit:
+				ticker.Stop()
+				log.Println("Stopped the ticker!")
+				return
+			}
+		}
+	}()
 }
 
 func tweetData(pm25 string, psi string) {
-	c := getTwitterConfig("consumer")
-	a := getTwitterConfig("application")
-	anaconda.SetConsumerKey(a[0])
-	anaconda.SetConsumerSecret(a[1])
+	cfg := config.TwitterConfig()
 
-	api := anaconda.NewTwitterApi(c[0], c[1])
+	anaconda.SetConsumerKey(cfg.Application.ApiKey)
+	anaconda.SetConsumerSecret(cfg.Application.ApiSecret)
+
+	api := anaconda.NewTwitterApi(cfg.Consumer.Token, cfg.Consumer.Secret)
 	advisory := checkWeather(pm25)
 	s := fmt.Sprintf("'%s' Current PSI: %s, PM2.5: %s. #sghaze", advisory, psi, pm25)
 	_, err := api.PostTweet(s, nil)
 	if err != nil {
 		log.Println(err)
-	}
-}
-
-func getTwitterConfig(kind string) []string {
-	file, _ := os.Open("twitter-config.json")
-	decoder := json.NewDecoder(file)
-	configuration := Configuration{}
-	err := decoder.Decode(&configuration)
-	if err != nil {
-		log.Println("error: ", err)
-	}
-
-	switch kind {
-	case "consumer":
-		return configuration.Consumer
-	case "application":
-		return configuration.Application
-	default:
-		return configuration.Consumer
 	}
 }
 
