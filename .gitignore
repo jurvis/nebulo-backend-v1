@@ -23,8 +23,6 @@ _testmain.go
 *.test
 *.prof
 
-twitter-config.json
-
 src/code.google.com
 src/github.com/PuerkitoBio
 src/github.com/steveyen

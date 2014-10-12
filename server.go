@@ -54,6 +54,7 @@ func main() {
 	agent.NewrelicLicense = ""
 	agent.Run()
 	http.HandleFunc("/get", agent.WrapHTTPHandlerFunc(viewData))
+	http.HandleFunc("/post", agent.WrapHTTPHandlerFunc(postUUID))
 
 	log.Println("Listening on http://localhost:5000/")
 	log.Fatal(http.ListenAndServe(":5000", Log(http.DefaultServeMux)))
