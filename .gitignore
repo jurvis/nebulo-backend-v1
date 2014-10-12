@@ -2,7 +2,7 @@
 *.o
 *.a
 *.so
-*.pem
+
 
 # Folders
 _obj
@@ -35,3 +35,6 @@ src/github.com/garyburd/
 src/github.com/anachronistic/
 src/github.com/yvasiyarov/
 twitter-config.json
+# Sensitive Config Files
+*.pem
+*.gcfg
