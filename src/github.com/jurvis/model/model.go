@@ -48,7 +48,7 @@ func HandlePush() {
 	}
 
 	// set up a goroutine to run APNS
-	ticker := time.NewTicker(3 * time.Hour)
+	ticker := time.NewTicker(1 * time.Hour)
 	quit := make(chan struct{})
 	go func() {
 		for {
