@@ -31,6 +31,7 @@ src/github.com/garyburd/
 src/github.com/yvasiyarov/
 src/github.com/lib/
 src/github.com/anachronistic/
+src/github.com/alexjlockwood/
 
 # Sensitive config files 
 *.pem
