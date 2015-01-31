@@ -98,8 +98,8 @@ func viewData(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	model.HandlePush()
 	model.StoreData()
+	model.HandlePush()
 	agent := gorelic.NewAgent()
 	agent.Verbose = true
 	agent.NewrelicLicense = ""
