@@ -97,8 +97,8 @@ func viewData(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	model.HandlePush()
 	model.StoreData()
+	model.HandlePush()
 	http.HandleFunc("/get", viewData)
 	http.HandleFunc("/post", postUUID)
 
