@@ -22,8 +22,8 @@ func AQICN_Scrape() WeatherData {
 
 	var w WeatherData
 
-	doc.Find("div#citydivouter div#citydivmain table.aqiwidget tbody").EachWithBreak(func(i int, s *goquery.Selection) bool {
-		PSI := s.Find("#tr_psi #cur_psi.tdcur").Text()
+	doc.Find("div#citydivouter div#citydivmain div.aqiwidget tbody").EachWithBreak(func(i int, s *goquery.Selection) bool {
+		PSI := s.Find("tr#tr_psi td#cur_psi.tdcur").Text()
 		PM25 := s.Find("#tr_pm25 #cur_pm25.tdcur").Text()
 		Temp := s.Find("#tr_t #cur_t.tdcur").Text()
 		log.Printf("Scrapped: PSI: %s, PM25: %s Temp: %s", PSI, PM25, Temp)
