@@ -1,0 +1,7 @@
+[database]
+Username=
+Password=
+Dbname=
+Host=
+[redis]
+Address=addr:port

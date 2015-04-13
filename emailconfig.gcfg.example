@@ -1,0 +1,6 @@
+[alert]
+Address=
+Password=
+SMTPServer=
+SMTPPort=
+Recipients=address1,address2
