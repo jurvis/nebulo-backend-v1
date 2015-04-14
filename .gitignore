@@ -27,13 +27,9 @@ _testmain.go
 src/gopkg.in/bufio.v1/
 src/gopkg.in/redis.v2/
 src/golang.org/
-src/github.com/alexjlockwood/
-src/github.com/anachronistic/
-src/github.com/andybalholm/
-src/github.com/jordan-wright/
-src/github.com/lib/
-src/github.com/PuerkitoBio/
-src/github.com/stretchr/
+src/code.google.com/
+src/github.com/*
+!src/github.com/duncan
 
 # Sensitive config files 
 *.pem
