@@ -11,17 +11,29 @@ import (
 	_ "github.com/lib/pq"
 )
 
-type CityURL struct {
-	Id int
+type CountrySource struct {
 	Url string
 }
 
 type City struct {
-	Id int				`json:"id"`
-	City_name string	`json:"city_name"`
+	Id string			`json:"id"`
+	Name string			`json:"city_name"`
 	AdvisoryCode int	`json:"advisory_code"`
-	Pm25 string			`json:"PM25"`
-	Temperature string	`json:"temperature"`
+	Data int			`json:"data"`
+	Temp int			`json:"temperature"`
+	ScrapeTime int64 	`json:"scrapetime"`
+}
+
+//Structs below are for LEGACY clients
+type LegacyWeather struct {
+	PM25 string		`json:"PM25"`
+	PSI string 		`json:PSI"`
+	Temp string 	`json:Temp"`
+}
+
+type LegacyCity struct {
+	Status string			`json:"status"`
+	Weather LegacyWeather	`json:"weather"`
 }
 
 var db_config config.DbCfg = config.DbConfig()
@@ -31,47 +43,8 @@ var Redis_DataHolder *redis.Client = redis.NewClient(&redis.Options{Network:"tcp
 
 var PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE string = db_config.Database.Username, db_config.Database.Password, db_config.Database.Dbname, "disable"
 
-//Return ALL locations (id and URL)
-func GetAllCityURLs() []CityURL {
-	keys, err := Redis_URLs.Keys("*").Result()
-	var cities []CityURL
-
-	if err != nil {
-		fmt.Println("Error retrieving Redis URL keys")
-		return nil
-	}
-
-	for _, key := range keys {
-		key_int, error := strconv.Atoi(key)
-		if error == nil {
-			value, er := Redis_URLs.Get(key).Result()
-			if er == nil {
-				cities = append(cities, CityURL{Id:key_int, Url:value})
-			} else {
-				fmt.Printf("Error retrieving value of key '%s'\n", key)
-			}
-		} else {
-			fmt.Printf("Error converting string '%s' to int\n", key)
-		}
-	}
-
-	return cities
-}
-
-//Save location result into REDIS for Temp storage
-func SaveLocationResult(id, data, temp int) {
-	//Redis HMSET (or at least the golang lib) doesn't support hash values being integers.
-	id_string := strconv.Itoa(id)
-	data_string := strconv.Itoa(data)
-	temp_string := strconv.Itoa(temp)
-	cmd := Redis_DataHolder.HMSet(id_string, "data", data_string, "temp", temp_string)
-	if cmd.Err() != nil {
-		fmt.Println("Error occurred saving location result into Redis")
-	}
-}
-
-//Save REDIS Temp Storage data into SQL
-func SaveRedisDataIntoDB() {
+//Save data into DB
+/*func SaveData(cities []City, Updated map[string]bool) {
 	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
 
 	if err != nil {
@@ -81,53 +54,203 @@ func SaveRedisDataIntoDB() {
 
 	defer db.Close()
 
-	pm25_query := "pm25 = CASE"
+	name_query := "city_name = CASE"
+	data_query := "data = CASE"
 	temp_query := "temp = CASE"
-	final_query := ""
+	advisory_query := "advisory = CASE"
+	timestamp_query := "timestamp = CASE"
 
-	keys, err := Redis_DataHolder.Keys("*").Result()
+	for _, city := range cities {
+		scrapetime := city.ScrapeTime
+		data := city.Data
 
-	if err != nil {
-		log.Fatal(err)
-		//fmt.Println("Error retrieving data held in Redis Redis_DataHolder")
-		return
-	}
-
-	for _, key := range keys {
-		data, errr := Redis_DataHolder.HGet(key, "data").Result()
-		temp, errrr := Redis_DataHolder.HGet(key, "temp").Result()
-		
-		if (errr != nil) || (errrr != nil) {
-			continue
+		if Updated[city.Id] == false {
+			//Data not updated. DO NOT write data or update timestamp.
+			older_entry := GetSavedData(city.Id)
+			//Use older entry's data and timestamp if available.
+			if len(older_entry.Name) > 0 {
+				scrapetime = older_entry.ScrapeTime
+				data = older_entry.Data
+			}
 		}
 
-		pm25_query += " WHEN id=" + key + " THEN " + data;
-		temp_query += " WHEN id=" + key + " THEN " + temp;
+		insert_query := fmt.Sprintf("INSERT INTO data (id, city_name, data, temp, advisory, timestamp) VALUES ('%s', '%s', %d, %d, %d, %d);", city.Id, city.Name, data, city.Temp, city.AdvisoryCode, scrapetime)
+		_, e := db.Exec(insert_query)
+		if e != nil {
+			//Error inserting, probably already there, so update.
+			name_query += fmt.Sprintf(" WHEN id='%s' THEN '%s'", city.Id, city.Name)
+			data_query += fmt.Sprintf(" WHEN id='%s' THEN %d", city.Id, data)
+			temp_query += fmt.Sprintf(" WHEN id='%s' THEN %d", city.Id, city.Temp)
+			advisory_query += fmt.Sprintf(" WHEN id='%s' THEN %d", city.Id, city.AdvisoryCode)
+			timestamp_query += fmt.Sprintf(" WHEN id='%s' THEN %d", city.Id, scrapetime)
+		}
 	}
 
-	pm25_query += " END"
+	data_query += " END"
 	temp_query += " END"
+	name_query += " END"
+	advisory_query += " END"
+	timestamp_query += " END"
 
 	//Run the command
-	final_query = "UPDATE data SET " + pm25_query + ", " + temp_query
+	final_query := fmt.Sprintf("UPDATE data SET %s, %s, %s, %s, %s;", name_query, data_query, temp_query, advisory_query, timestamp_query)
+
 	_, error := db.Exec(final_query)
 
 	if error != nil {
 		log.Fatal(error)
-		//fmt.Println("Error occurred transferring from Redis to SQL")
+		return
+	}
+}*/
+
+//Save data into DB
+func SaveData(cities []City, Updated map[string]bool) {
+	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
+
+	if err != nil {
+		log.Fatal(err)
 		return
 	}
 
-	//ra, _ := result.RowsAffected()
-	//fmt.Printf("Transfer from Redis to SQL: %d/%d\n", ra, len(keys))
+	defer db.Close()
+
+	query := "BEGIN; CREATE TEMPORARY TABLE newvals (id VARCHAR(10), city_name VARCHAR(500), data INTEGER, temp INTEGER, advisory INTEGER, timestamp BIGINT); "
+	query += "INSERT INTO newvals (id, city_name, data, temp, advisory, timestamp) VALUES "
+
+	for _, city := range cities {
+		//Overwrite existing Id if it exists
+		older_entry := GetSavedData(city.Id)
+		country := city.Id[0:2]
+		fmt.Sprintf("Country is", country)
+		id := fmt.Sprintf("%s0", country)
+		if len(older_entry.Name) > 0 {
+			id = older_entry.Id
+		} else {
+			id = GetNextAvailableId(country)
+		}
+		query += fmt.Sprintf("('%s', '%s', %d, %d, %d, %d), ", id, city.Name, city.Data, city.Temp, city.AdvisoryCode, city.ScrapeTime)
+	}
+
+	query = query[:len(query) - 2] //Remove the last ', '
+	query += "; LOCK TABLE data IN EXCLUSIVE MODE; "
+	query += "UPDATE data SET id = newvals.id, city_name = newvals.city_name, data = newvals.data, temp = newvals.temp, advisory = newvals.advisory, timestamp = newvals.timestamp FROM newvals WHERE newvals.id = data.id; "
+
+	query += "INSERT INTO data SELECT newvals.id, newvals.city_name, newvals.data, newvals.temp, newvals.advisory, newvals.timestamp FROM newvals LEFT OUTER JOIN data ON (data.id = newvals.id) WHERE data.id IS NULL; "
+	query += "COMMIT;"
+
+	_, error := db.Exec(query)
+
+	if error != nil {
+		log.Fatal(error)
+		return
+	}
 }
 
-//Wipe Redis' Temp Storage
-/*func WipeRedisTempStorage() {
+//Return legacy status string. Not present in Nebulo 2.0+
+func getLegacyStatus(pm25 int) string {
+	if pm25 > 200 {
+		return "Stay Indoors."
+	} else if pm25 > 100 {
+		return "The Air Is Bad."
+	} else if pm25 > 50 {
+		return "Moderate."
+	} else {
+		return "It's Clear."
+	}
+}
 
-}*/
+//Return Central, Singapore's data for legacy calls
+func GetLegacyData() *LegacyCity {
+	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
 
-//Return the closest locations based on lat and lon. Use PostgreSQL.
+	if err != nil {
+		log.Fatal(err)
+		return nil
+	}
+
+	defer db.Close()
+
+	query, er := db.Query("SELECT data, temp FROM data WHERE city_name='Central, Singapore';")
+
+	if er != nil {
+		return nil
+	}
+
+	defer query.Close()
+
+	for query.Next() {
+		var data, temp int
+		query.Scan(&data, &temp)
+		return &LegacyCity{Status: getLegacyStatus(data), Weather: LegacyWeather{PM25: strconv.Itoa(data), PSI: "N/A", Temp: strconv.Itoa(temp)}}
+	}
+
+	return nil
+}
+
+//Return next available index for country (for appending to bottom)
+func GetNextAvailableId(country_id string) string {
+	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
+
+	if err != nil {
+		log.Fatal(err)
+		return fmt.Sprintf("%s0", country_id)
+	}
+
+	locations, er := db.Query(`SELECT id FROM data WHERE id LIKE '$1%'`, country_id)
+
+	defer locations.Close()
+
+	if er != nil {
+		log.Fatal(er)
+		return fmt.Sprintf("%s0", country_id)
+	}
+
+	count := 0
+
+	for locations.Next() {
+		count++
+	}
+
+	defer db.Close()
+
+	return fmt.Sprintf("%s%d", country_id, count)
+}
+
+//Get the saved data for comparison
+func GetSavedData(id string) City {
+	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
+
+	if err != nil {
+		log.Fatal(err)
+		return City{}
+	}
+
+	defer db.Close()
+
+	locations, er := db.Query(`SELECT * FROM data WHERE id=$1`, id)
+
+	defer locations.Close()
+
+	if er != nil {
+		log.Fatal(er)
+		return City{}
+	}
+
+	for locations.Next() {
+		var id string
+		var city_name string
+		var data int
+		var temp int
+		var advisory int
+		var scrapetime int64
+		locations.Scan(&id, &city_name, &data, &temp, &advisory, &scrapetime)
+		return City{id, city_name, advisory, data, temp, scrapetime}
+	}
+
+	return City{}
+}
+
+//Return the closest locations based on lat and lon. Uses PostgreSQL extensions
 func GetNearbyLocations(lat, lng float64) []City {
 	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
 
@@ -138,9 +261,10 @@ func GetNearbyLocations(lat, lng float64) []City {
 
 	defer db.Close()
 
-	//fmt.Printf("Retrieving locations near lat:%f lon:%f\n", lat, lng)
 	var cities []City
 	locations, er := db.Query(`SELECT id, earth_distance(ll_to_earth($1, $2), ll_to_earth(lat, lng)) as distance FROM locations ORDER BY distance ASC LIMIT 5;`, lat, lng)
+
+	defer locations.Close()
 
 	if er != nil {
 		log.Fatal(er)
@@ -148,27 +272,31 @@ func GetNearbyLocations(lat, lng float64) []City {
 	}
 
 	for locations.Next() {
-		var id int
+		var id string
 		var distance float64
 		var city_name string
-		var pm25 int
+		var data int
 		var temp int
+		var advisory int
+		var scrapetime int64
 		locations.Scan(&id, &distance)
-		data, errr := db.Query(`SELECT * FROM data WHERE id=$1;`, id)
+		d, errr := db.Query(`SELECT * FROM data WHERE id=$1;`, id)
 
 		if errr != nil {
 			log.Fatal(errr)
 			return nil
 		}
 
-		data.Next()
-		data.Scan(&id, &city_name, &pm25, &temp)
-		cities = append(cities, City{id, city_name, GetAdvisoryCode(pm25), strconv.Itoa(pm25), strconv.Itoa(temp)})
+		d.Next()
+		d.Scan(&id, &city_name, &data, &temp, &advisory, &scrapetime)
+		d.Close()
+		cities = append(cities, City{id, city_name, advisory, data, temp, scrapetime})
 	}
 	return cities
 }
 
-func SavePushDevice(uuid, deviceType string, preference int) bool{
+//Remove a device from push database
+func RemovePushDevice(uuid, deviceType string) bool {
 	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
 
 	if err != nil {
@@ -186,17 +314,16 @@ func SavePushDevice(uuid, deviceType string, preference int) bool{
 		table_name = "push_ios"
 	} else {
 		//What is this rogue OS?
-		fmt.Printf("Captured a rogue device push with unidentified OS: %s. Request denied.\n", deviceType)
+		log.Printf("Captured a rogue device push with unidentified OS: %s. Request denied.\n", deviceType)
 		return false
 	}
 
-	fmt.Printf("Saving %s device with UUID: %s\n", deviceType, uuid)
+	log.Printf("Removing %s device with UUID: %s\n", deviceType, uuid)
 
-	result, error := db.Exec(fmt.Sprintf("INSERT INTO %s (uuid, id) VALUES (%s, %d);", table_name, uuid, preference)) //Default to NULL for id
+	result, error := db.Exec("DELETE FROM $1 WHERE uuid='$2';", table_name, uuid) //Default to NULL for id
 
 	if error != nil {
-		log.Fatal(error)
-		fmt.Println("Error occurred saving push device")
+		log.Println("Error occurred removing push device")
 		return false
 	}
 
@@ -205,29 +332,59 @@ func SavePushDevice(uuid, deviceType string, preference int) bool{
 		return false
 	}
 
-	fmt.Printf("Saved %s Push Device. Rows Affected: %d\n", deviceType, ra)
+	log.Printf("Removed %s Push Device. Rows Affected: %d\n", deviceType, ra)
+	if ra == 0 {
+		return false
+	}
 	return true
 }
 
-func GetAdvisoryCode(pm25 int) int{
-	if pm25 > 200 {
-		//status = "Stay Indoors."
-		return 3
-	} else if pm25 > 100 {
-		//status = "The Air Is Bad."
-		return 2
-	} else if pm25 > 50 {
-		//status = "Moderate."
-		return 1
-	} else {
-		//status = "It's Clear."
-		return 0
+//Save a push device into DB
+func SavePushDevice(uuid, deviceType, preference string) bool{
+	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
+
+	if err != nil {
+		log.Fatal(err)
+		return false
 	}
+
+	defer db.Close()
+
+	var table_name string
+
+	if strings.EqualFold(deviceType, "Android") {
+		table_name = "push_android"
+	} else if strings.EqualFold(deviceType, "iOS") {
+		table_name = "push_ios"
+	} else {
+		//What is this rogue OS?
+		log.Printf("Captured a rogue device push with unidentified OS: %s. Request denied.\n", deviceType)
+		return false
+	}
+
+	log.Printf("Saving %s device with UUID: %s\n", deviceType, uuid)
+
+	result, error := db.Exec(fmt.Sprintf("INSERT INTO %s (uuid, id) VALUES ('%s', '%s');", table_name, uuid, preference)) //Default to NULL for id
+
+	if error != nil {
+		log.Println("Error occurred saving push device")
+		return false
+	}
+
+	ra, er := result.RowsAffected()
+	if er != nil {
+		return false
+	}
+
+	log.Printf("Saved %s Push Device. Rows Affected: %d\n", deviceType, ra)
+	if ra == 0 {
+		return false
+	}
+	return true
 }
 
-
 //Helper method to get devices with a certain preference from a certain table
-func GetDevicesByPreference(preference int, table_name string) []string {
+func GetDevicesByPreference(preference, table_name string) []string {
 	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
 
 	if err != nil {
@@ -239,9 +396,12 @@ func GetDevicesByPreference(preference int, table_name string) []string {
 
 	var devices []string
 
-	rows, err := db.Query("SELECT uuid FROM $1 WHERE id=$2", table_name, preference)
-	if err != nil {
-		log.Println("Unable to run SQL Query")
+	rows, er := db.Query(fmt.Sprintf("SELECT uuid FROM %s WHERE id=$1", table_name), preference)
+
+	defer rows.Close()
+
+	if er != nil {
+		log.Fatal(er)
 	}
 
 	for rows.Next() {
@@ -254,11 +414,11 @@ func GetDevicesByPreference(preference int, table_name string) []string {
 }
 
 //Get Android devices with a certain preference
-func GetAndroidDevicesByPreference(preference int) []string {
+func GetAndroidDevicesByPreference(preference string) []string {
 	return GetDevicesByPreference(preference, "push_android")
 }
 
 //Get iOS devices with a certain preference
-func GetiOSDevicesByPreference(preference int) []string {
+func GetiOSDevicesByPreference(preference string) []string {
 	return GetDevicesByPreference(preference, "push_ios")
 }

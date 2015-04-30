@@ -9,17 +9,19 @@ import (
 )
 
 //Should we push alerts?
-func ShouldPush(data int) bool {
-	if data >= 100 {
-		return true
-	} else {
-		return false
+func ShouldPush(city db.City) bool {
+	older_entry := db.GetSavedData(city.Id)
+	if len(older_entry.Name) > 0 {
+		if older_entry.Data != city.Data {
+			return city.AdvisoryCode >= 3
+		}
 	}
+	return false
 }
 
 //Push message
-func GetPushAlert(data int) string {
-	if data > 200 {
+func GetPushAlert(city db.City) string {
+	if city.AdvisoryCode == 5 {
 		return "The air is now hazardous, avoid the outdoors!"
 	} else {
 		return "The air is now in an unhealthy range, take care."
@@ -27,10 +29,10 @@ func GetPushAlert(data int) string {
 }
 
 //Send a push notification (this one calls the other methods)
-func Push(id, data int) {
-	if ShouldPush(data) {
-		go pushAPNS(db.GetiOSDevicesByPreference(id), GetPushAlert(data))
-		go pushGCM(db.GetAndroidDevicesByPreference(id), GetPushAlert(data))
+func Push(city db.City) {
+	if ShouldPush(city) {
+		go pushAPNS(db.GetiOSDevicesByPreference(city.Id), GetPushAlert(city))
+		go pushGCM(db.GetAndroidDevicesByPreference(city.Id), GetPushAlert(city))
 	} /*else {
 		log.Println("Nothing to push")
 	}*/
