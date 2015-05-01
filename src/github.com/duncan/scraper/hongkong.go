@@ -27,12 +27,13 @@ func GetHongKongAdvisory(value int) int {
 	}
 }
 
-func ScrapeHongKong() []db.City{
+func ScrapeHongKong() ([]db.City, []ScrapeError){
 	var cities []db.City
+	var myFailures []ScrapeError
 
 	doc, err := goquery.NewDocument(HONGKONG_URL)
 	if err != nil {
-		return cities
+		return cities, myFailures
 	}
 
 	numGeneralStations := 0
@@ -51,18 +52,18 @@ func ScrapeHongKong() []db.City{
 
 		if (len(psi_value) == 0) || (len(city_name) == 0) {
 			log.Printf("[HONG KONG] Scrape failure: '%s' '%s'\n", psi_value, city_name)
+			myFailures = append(myFailures, ScrapeError{city_name, psi_value, "Hong Kong"})
 			return
 		}
 
 		psi, e1 := strconv.ParseFloat(psi_value, 64)
 		if e1 != nil {
 			log.Printf("[HONG KONG] Scrape failure: '%s' '%s'\n", psi_value, city_name)
-			psi = -1
+			myFailures = append(myFailures, ScrapeError{city_name, psi_value, "Hong Kong"})
 		} else {
-			Updated[city_id] = true
+			hk_temp := (int)(weather.GetWeather(city_id, city_name, "Hong Kong").Temp)
+			cities = append(cities, db.City{Id: city_id, Name: city_name, Data: int(psi), Temp: hk_temp, AdvisoryCode: GetHongKongAdvisory(int(psi)), ScrapeTime: GetUnixTime()})
 		}
-		hk_temp := (int)(weather.GetWeather(city_name, "Hong Kong").Main.Temp)
-		cities = append(cities, db.City{Id: city_id, Name: city_name, Data: int(psi), Temp: hk_temp, AdvisoryCode: GetHongKongAdvisory(int(psi)), ScrapeTime: GetUnixTime()})
 		numGeneralStations++
 	})
 
@@ -80,20 +81,20 @@ func ScrapeHongKong() []db.City{
 
 		if (len(psi_value) == 0) || (len(city_name) == 0) {
 			log.Printf("[HONG KONG] Scrape failure: '%s' '%s'\n", psi_value, city_name)
+			myFailures = append(myFailures, ScrapeError{city_name, psi_value, "Hong Kong"})
 			return
 		}
 
 		psi, e1 := strconv.ParseFloat(psi_value, 64)
 		if e1 != nil {
 			log.Printf("[HONG KONG] Scrape failure: '%s' '%s'\n", psi_value, city_name)
-			psi = -1
+			myFailures = append(myFailures, ScrapeError{city_name, psi_value, "Hong Kong"})
 		} else {
-			Updated[city_id] = true
+			hk_temp := (int)(weather.GetWeather(city_id, city_name, "Hong Kong").Temp)
+			cities = append(cities, db.City{Id: city_id, Name: city_name, Data: int(psi), Temp: hk_temp, AdvisoryCode: GetHongKongAdvisory(int(psi)), ScrapeTime: GetUnixTime()})
 		}
-		hk_temp := (int)(weather.GetWeather(city_name, "Hong Kong").Main.Temp)
-		cities = append(cities, db.City{Id: city_id, Name: city_name, Data: int(psi), Temp: hk_temp, AdvisoryCode: GetHongKongAdvisory(int(psi)), ScrapeTime: GetUnixTime()})
 	})
 
 	fmt.Println("Scraping Hong Kong Complete")
-	return cities
+	return cities, myFailures
 }

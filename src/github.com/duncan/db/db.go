@@ -9,6 +9,7 @@ import (
 	"gopkg.in/redis.v2"
 	"database/sql"
 	_ "github.com/lib/pq"
+	"errors"
 )
 
 type CountrySource struct {
@@ -44,67 +45,7 @@ var Redis_DataHolder *redis.Client = redis.NewClient(&redis.Options{Network:"tcp
 var PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE string = db_config.Database.Username, db_config.Database.Password, db_config.Database.Dbname, "disable"
 
 //Save data into DB
-/*func SaveData(cities []City, Updated map[string]bool) {
-	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
-
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
-
-	defer db.Close()
-
-	name_query := "city_name = CASE"
-	data_query := "data = CASE"
-	temp_query := "temp = CASE"
-	advisory_query := "advisory = CASE"
-	timestamp_query := "timestamp = CASE"
-
-	for _, city := range cities {
-		scrapetime := city.ScrapeTime
-		data := city.Data
-
-		if Updated[city.Id] == false {
-			//Data not updated. DO NOT write data or update timestamp.
-			older_entry := GetSavedData(city.Id)
-			//Use older entry's data and timestamp if available.
-			if len(older_entry.Name) > 0 {
-				scrapetime = older_entry.ScrapeTime
-				data = older_entry.Data
-			}
-		}
-
-		insert_query := fmt.Sprintf("INSERT INTO data (id, city_name, data, temp, advisory, timestamp) VALUES ('%s', '%s', %d, %d, %d, %d);", city.Id, city.Name, data, city.Temp, city.AdvisoryCode, scrapetime)
-		_, e := db.Exec(insert_query)
-		if e != nil {
-			//Error inserting, probably already there, so update.
-			name_query += fmt.Sprintf(" WHEN id='%s' THEN '%s'", city.Id, city.Name)
-			data_query += fmt.Sprintf(" WHEN id='%s' THEN %d", city.Id, data)
-			temp_query += fmt.Sprintf(" WHEN id='%s' THEN %d", city.Id, city.Temp)
-			advisory_query += fmt.Sprintf(" WHEN id='%s' THEN %d", city.Id, city.AdvisoryCode)
-			timestamp_query += fmt.Sprintf(" WHEN id='%s' THEN %d", city.Id, scrapetime)
-		}
-	}
-
-	data_query += " END"
-	temp_query += " END"
-	name_query += " END"
-	advisory_query += " END"
-	timestamp_query += " END"
-
-	//Run the command
-	final_query := fmt.Sprintf("UPDATE data SET %s, %s, %s, %s, %s;", name_query, data_query, temp_query, advisory_query, timestamp_query)
-
-	_, error := db.Exec(final_query)
-
-	if error != nil {
-		log.Fatal(error)
-		return
-	}
-}*/
-
-//Save data into DB
-func SaveData(cities []City, Updated map[string]bool) {
+func SaveData(cities []City) {
 	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
 
 	if err != nil {
@@ -119,11 +60,10 @@ func SaveData(cities []City, Updated map[string]bool) {
 
 	for _, city := range cities {
 		//Overwrite existing Id if it exists
-		older_entry := GetSavedData(city.Id)
+		older_entry, er := GetSavedData(city.Id)
 		country := city.Id[0:2]
-		fmt.Sprintf("Country is", country)
 		id := fmt.Sprintf("%s0", country)
-		if len(older_entry.Name) > 0 {
+		if er == nil {
 			id = older_entry.Id
 		} else {
 			id = GetNextAvailableId(country)
@@ -196,7 +136,7 @@ func GetNextAvailableId(country_id string) string {
 		return fmt.Sprintf("%s0", country_id)
 	}
 
-	locations, er := db.Query(`SELECT id FROM data WHERE id LIKE '$1%'`, country_id)
+	locations, er := db.Query(fmt.Sprintf("SELECT id FROM data WHERE id LIKE '%s%%'", country_id))
 
 	defer locations.Close()
 
@@ -217,12 +157,12 @@ func GetNextAvailableId(country_id string) string {
 }
 
 //Get the saved data for comparison
-func GetSavedData(id string) City {
+func GetSavedData(id string) (City, error) {
 	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
 
 	if err != nil {
 		log.Fatal(err)
-		return City{}
+		return City{}, errors.New("Error accessing db!")
 	}
 
 	defer db.Close()
@@ -233,7 +173,7 @@ func GetSavedData(id string) City {
 
 	if er != nil {
 		log.Fatal(er)
-		return City{}
+		return City{}, errors.New("Error running db query!")
 	}
 
 	for locations.Next() {
@@ -244,10 +184,10 @@ func GetSavedData(id string) City {
 		var advisory int
 		var scrapetime int64
 		locations.Scan(&id, &city_name, &data, &temp, &advisory, &scrapetime)
-		return City{id, city_name, advisory, data, temp, scrapetime}
+		return City{id, city_name, advisory, data, temp, scrapetime}, nil
 	}
 
-	return City{}
+	return City{}, errors.New("Nothing to return!")
 }
 
 //Return the closest locations based on lat and lon. Uses PostgreSQL extensions

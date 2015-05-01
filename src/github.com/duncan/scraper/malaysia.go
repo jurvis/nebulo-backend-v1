@@ -28,12 +28,13 @@ func GetMalaysiaAdvisory(value int) int {
 	}
 }
 
-func ScrapeMalaysia() []db.City{
+func ScrapeMalaysia() ([]db.City, []ScrapeError) {
 	var cities []db.City
+	var myFailures []ScrapeError
 
 	doc, err := goquery.NewDocument(MALAYSIA_URL)
 	if err != nil {
-		return cities
+		return cities, myFailures
 	}
 
 	list := doc.Find("center div#wrapper div#right table.table1 tbody")
@@ -60,20 +61,20 @@ func ScrapeMalaysia() []db.City{
 
 		if (len(psi_value) == 0) || (len(city_name) == 0) {
 			log.Printf("[MALAYSIA] Scrape failure: '%s' '%s'\n", psi_value, city_name)
+			myFailures = append(myFailures, ScrapeError{city_name, psi_value, "Malaysia"})
 			return
 		}
 
 		psi, e1 := strconv.Atoi(psi_value)
 		if e1 != nil {
 			log.Printf("[MALAYSIA] Scrape failure: '%s' '%s'\n", psi_value, city_name)
-			psi = -1
+			myFailures = append(myFailures, ScrapeError{city_name, psi_value, "Malaysia"})
 		} else {
-			Updated[city_id] = true
+			my_temp := (int)(weather.GetWeather(city_id, city_name, state).Temp)
+			cities = append(cities, db.City{Id: city_id, Name: city_name, Data: psi, Temp: my_temp, AdvisoryCode: GetMalaysiaAdvisory(psi), ScrapeTime: GetUnixTime()})
 		}
-		my_temp := (int)(weather.GetWeather(city_name, state).Main.Temp)
-		cities = append(cities, db.City{Id: city_id, Name: city_name, Data: psi, Temp: my_temp, AdvisoryCode: GetMalaysiaAdvisory(psi), ScrapeTime: GetUnixTime()})
 	})
 
 	fmt.Println("Scraping Malaysia Complete")
-	return cities
+	return cities, myFailures
 }

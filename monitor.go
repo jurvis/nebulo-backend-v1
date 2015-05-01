@@ -178,6 +178,8 @@ func main() {
 		log.SetOutput(f)
 	}
 
+	log.SetFlags(log.Lshortfile | log.Ldate | log.Ltime)
+
 	defer f.Close()
 
 	//Worker Pool

@@ -28,17 +28,19 @@ func GetSingaporeAdvisory(value int) int {
 	}
 }
 
-func ScrapeSingapore() []db.City{
+func ScrapeSingapore() ([]db.City, []ScrapeError) {
 	var cities []db.City
+	var myFailures []ScrapeError
 
 	doc, err := goquery.NewDocument(SINGAPORE_URL)
 	if err != nil {
-		return cities
+		return cities, myFailures
 	}
+
 
 	list := doc.Find("ul.list")
 
-	sg_temp := (int)(weather.GetWeather("Singapore", "Singapore").Main.Temp)
+	sg_temp := (int)(weather.GetWeather("SG0", "Singapore", "Singapore").Temp)
 
 	list.Children().Each(func(i int, s *goquery.Selection) {
 		fmt.Printf("Scraping Singapore #%d\r", i)
@@ -53,20 +55,20 @@ func ScrapeSingapore() []db.City{
 
 		if (len(psi_value) == 0) || (len(direction) == 0) {
 			log.Printf("[SINGAPORE] Scrape failure: '%s' '%s'\n", psi_value, direction)
+			myFailures = append(myFailures, ScrapeError{city_name, psi_value, "Singapore"})
 			return
 		}
 
 		psi, e1 := strconv.Atoi(psi_value)
 		if e1 != nil {
 			log.Printf("[SINGAPORE] Scrape failure: '%s' '%s'\n", psi_value, direction)
-			psi = -1
+			myFailures = append(myFailures, ScrapeError{city_name, psi_value, "Singapore"})
 		} else {
-			Updated[city_id] = true
+			cities = append(cities, db.City{Id: city_id, Name: city_name, Data: psi, Temp: sg_temp, AdvisoryCode: GetSingaporeAdvisory(psi), ScrapeTime: GetUnixTime()})
 		}
-		cities = append(cities, db.City{Id: city_id, Name: city_name, Data: psi, Temp: sg_temp, AdvisoryCode: GetSingaporeAdvisory(psi), ScrapeTime: GetUnixTime()})
 	})
 
 	fmt.Println("Scraping Singapore Complete")
 
-	return cities
+	return cities, myFailures
 }

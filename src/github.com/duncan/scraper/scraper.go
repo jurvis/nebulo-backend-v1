@@ -10,7 +10,13 @@ import (
 	"github.com/duncan/weather"
 )
 
-var Updated map[string]bool
+type ScrapeError struct {
+	City_name string
+	Data string
+	Country string
+}
+
+var failures []ScrapeError
 
 var SCRAPE_INTERVAL_MINUTE int = 30
 
@@ -19,35 +25,15 @@ func GetUnixTime() int64 {
 	return (time.Now().UnixNano() / 1000000)
 }
 
-func DoAlert(failures []string) {
+func DoAlert() {
 	body := "Hi Masters, I detected some failures:\n\n"
 
-	/*sql_data := "DELETE FROM data WHERE id IN ("
-	sql_locations := "DELETE FROM locations WHERE id IN ("
-	redis_mass := ""*/
-
 	for _, failure := range failures {
-		body += fmt.Sprintf("%s\n", failure)
-		/*sql_data += fmt.Sprintf("%d, ", city.Id)
-		sql_locations += fmt.Sprintf("%d, ", city.Id)
-		redis_mass += fmt.Sprintf("DEL %d\n", city.Id)*/
-		fmt.Println(failure)
+		body += fmt.Sprintf("%s city '%s' : %s\n", failure.Country, failure.City_name, failure.Data)
 	}
 
-	/*sql_data = sql_data[:len(sql_data) - 2]
-	sql_locations = sql_locations[:len(sql_locations) - 2]
-
-	sql_data += ");"
-	sql_locations += ");"*/
-
-	//body += fmt.Sprintf("This is %d out of %d of all the cities I am supposed to scrape.\n", len(failedScrapes), totalCount)
 	body += "\nCurrent scrape policy: Cities that scrape successfully are saved, while cities that scrape unsuccessfully retain their last good value. If there has never been a good value, it returns -1.\n"
 	body += "\nCurrent push policy: Scraped data must be different from their existing equivalent in the DB and must also be >100 to get push notifications.\n"
-	/*body += "\nIf you decide to remove these entries, here are the relevant queries to run:"
-	body += "\n\n" + sql_data
-	body += "\n\n" + sql_locations
-	body += "\n\n" + redis_mass
-	body += "\n\nP.S. Run the redis_mass translator to turn it into a suitable pipe-able text file."*/
 	body += "\nPlease do check what went wrong. Thanks."
 
 	go email.Alert("Nebulo Backend Scraping Failure!", body)
@@ -59,13 +45,14 @@ func ScrapeInterval() {
 	for {
 		//Clear counters
 		start := time.Now()
-		Updated = make(map[string]bool)
 
 		fmt.Println("=====SCRAPER BEGIN=====")
 		log.Println("=====SCRAPER BEGIN=====")
 
 		var allCities []db.City
-		var failures []string
+
+		//Clear failures
+		failures = nil
 
 		weather.ClearCache()
 
@@ -74,34 +61,26 @@ func ScrapeInterval() {
 		//Scrape
 		jobChannel := make(chan bool, TOTAL_COUNTRIES) //Total no
 		go func() {
-			sg := ScrapeSingapore()
-			if len(sg) == 0 {
-				failures = append(failures, "No Singapore cities were scraped")
-			}
+			sg, fail := ScrapeSingapore()
+			failures = append(failures, fail...)
 			allCities = append(allCities, sg...)
 			jobChannel <- true
 		}()
 		go func() {
-			my := ScrapeMalaysia()
-			if len(my) == 0 {
-				failures = append(failures, "No Malaysia cities were scraped")
-			}
+			my, fail := ScrapeMalaysia()
+			failures = append(failures, fail...)
 			allCities = append(allCities, my...)
 			jobChannel <- true
 		}()
 		go func() {
-			hk := ScrapeHongKong()
-			if len(hk) == 0 {
-				failures = append(failures, "No Hong Kong cities were scraped")
-			}
+			hk, fail := ScrapeHongKong()
+			failures = append(failures, fail...)
 			allCities = append(allCities, hk...)
 			jobChannel <- true
 		}()
 		go func() {
-			th := ScrapeThailand()
-			if len(th) == 0 {
-				failures = append(failures, "No Thailand cities were scraped")
-			}
+			th, fail := ScrapeThailand()
+			failures = append(failures, fail...)
 			allCities = append(allCities, th...)
 			jobChannel <- true
 		}()
@@ -121,8 +100,12 @@ func ScrapeInterval() {
 		log.Printf("Scraping complete. %d cities were successfully scraped.\n", len(allCities))
 		fmt.Printf("Duration elapsed: %dms.\n", timeElapsedMillis)
 
-		fmt.Println("Transferring Redis temp data into DB.")
-		db.SaveData(allCities, Updated)
+		if len(failures) > 0 {
+			DoAlert()
+		}
+		fmt.Println("Saving data")
+		db.SaveData(allCities)
+		fmt.Println("Saved data")
 
 		fmt.Printf("Scraping complete. Runs again in %d minutes\n", SCRAPE_INTERVAL_MINUTE)
 		log.Printf("Scraping complete. Runs again in %d minutes\n", SCRAPE_INTERVAL_MINUTE)

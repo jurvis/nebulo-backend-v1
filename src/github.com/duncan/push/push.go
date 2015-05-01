@@ -10,8 +10,8 @@ import (
 
 //Should we push alerts?
 func ShouldPush(city db.City) bool {
-	older_entry := db.GetSavedData(city.Id)
-	if len(older_entry.Name) > 0 {
+	older_entry, er := db.GetSavedData(city.Id)
+	if er == nil {
 		if older_entry.Data != city.Data {
 			return city.AdvisoryCode >= 3
 		}
