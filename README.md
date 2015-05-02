@@ -6,7 +6,6 @@ This is a web app written in Go. It uses goquery to scrape data from http://aqic
 Will love to gather some feedback on how to improve this, so feel free to submit an issue and I'll be happy to learn!
 
 ### Requirements
-Redis key-value store
 PostgreSQL database
 
 ### Getting Started
