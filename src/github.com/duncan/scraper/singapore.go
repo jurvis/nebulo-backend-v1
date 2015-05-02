@@ -8,6 +8,8 @@ import (
 	"log"
 	"fmt"
 	"strings"
+	"regexp"
+	"time"
 )
 
 //var url string = "http://www.nea.gov.sg/anti-pollution-radiation-protection/air-pollution-control/psi/psi"
@@ -37,13 +39,39 @@ func ScrapeSingapore() ([]db.City, []ScrapeError) {
 		return cities, myFailures
 	}
 
+	//Use NEA time
+
+	now := time.Now()
+	scrape_time := now
+	time_raw := doc.Find("p.time").Text()
+	pattern := regexp.MustCompile("(?:.*)at (\\d{1,2})(\\w{2})+(?:.*)")
+
+	regex_results := pattern.FindStringSubmatch(time_raw)
+	if len(regex_results) == 3 {
+		hour, int_err := strconv.Atoi(regex_results[1])
+		if int_err == nil {
+			hour_24hour := hour
+			am_pm := regex_results[2]
+			if am_pm == "am" {
+				if hour == 12 {
+					hour_24hour = 0 //Factor in 12 midnight (12am)
+				}
+			} else if am_pm == "pm" {
+				hour_24hour = hour + 12
+				if hour == 12 {
+					hour_24hour = 12 //Factor in 12 noon (12pm)
+				}
+			}
+			scrape_time = time.Date(now.Year(), now.Month(), now.Day(), hour_24hour, 0, 0, 0, now.Location())
+		}
+	}
 
 	list := doc.Find("ul.list")
 
 	sg_temp := (int)(weather.GetWeather("SG0", "Singapore", "Singapore").Temp)
 
 	list.Children().Each(func(i int, s *goquery.Selection) {
-		fmt.Printf("Scraping Singapore #%d\r", i)
+		fmt.Printf("Scraping %-30s #%-4d\r", "Singapore", i)
 		city_id := fmt.Sprintf("SG%d", i)
 		psi_value := s.Find("span.psi-value").Text()
 		//Remove random characters
@@ -64,11 +92,11 @@ func ScrapeSingapore() ([]db.City, []ScrapeError) {
 			log.Printf("[SINGAPORE] Scrape failure: '%s' '%s'\n", psi_value, direction)
 			myFailures = append(myFailures, ScrapeError{city_name, psi_value, "Singapore"})
 		} else {
-			cities = append(cities, db.City{Id: city_id, Name: city_name, Data: psi, Temp: sg_temp, AdvisoryCode: GetSingaporeAdvisory(psi), ScrapeTime: GetUnixTime()})
+			cities = append(cities, db.City{Id: city_id, Name: city_name, Data: psi, Temp: sg_temp, AdvisoryCode: GetSingaporeAdvisory(psi), ScrapeTime: (scrape_time.UnixNano() / 1000000)})
 		}
 	})
 
-	fmt.Println("Scraping Singapore Complete")
+	fmt.Printf("Scraping %-30s Complete\n", "Singapore")
 
 	return cities, myFailures
 }

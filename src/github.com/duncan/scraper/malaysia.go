@@ -8,10 +8,11 @@ import (
 	"log"
 	"fmt"
 	"strings"
+	"time"
 )
 
 //var url string = "http://www.nea.gov.sg/anti-pollution-radiation-protection/air-pollution-control/psi/psi"
-var MALAYSIA_URL string = "http://apims.doe.gov.my/apims/hourly2.php"
+var MALAYSIA_URL string = "http://apims.doe.gov.my/apims/hourly%d.php"
 
 //Return the advisory from NEA
 func GetMalaysiaAdvisory(value int) int {
@@ -28,11 +29,41 @@ func GetMalaysiaAdvisory(value int) int {
 	}
 }
 
+//Return page url
+func GetPageUrl() string {
+	return fmt.Sprintf(MALAYSIA_URL, GetIndex())
+}
+
+//Return index based on time of day (APIMS has 4 pages of data)
+func GetIndex() int {
+	hour := time.Now().Hour()
+	if hour >= 18 {
+		return 4
+	} else if hour >= 12 {
+		return 3
+	} else if hour >= 6 {
+		return 2
+	} else {
+		return 1
+	}
+}
+
+func CleanData(orig string) string {
+	orig = strings.Replace(orig, " ", "", -1)
+	orig = strings.Replace(orig, "*", "", -1)
+	orig = strings.Replace(orig, "&", "", -1)
+	orig = strings.Replace(orig, "a", "", -1)
+	orig = strings.Replace(orig, "b", "", -1)
+	orig = strings.Replace(orig, "c", "", -1)
+	orig = strings.Replace(orig, "d", "", -1)
+	return orig
+}
+
 func ScrapeMalaysia() ([]db.City, []ScrapeError) {
 	var cities []db.City
 	var myFailures []ScrapeError
 
-	doc, err := goquery.NewDocument(MALAYSIA_URL)
+	doc, err := goquery.NewDocument(GetPageUrl())
 	if err != nil {
 		return cities, myFailures
 	}
@@ -41,23 +72,32 @@ func ScrapeMalaysia() ([]db.City, []ScrapeError) {
 
 	list.Find("tr").Each(func(i int, s *goquery.Selection) {
 		if i == 0 {
-			return //The first tr is the header of the table
+			return //The first tr is the header/times of the table
 		}
-		fmt.Printf("Scraping Malaysia #%d\r", i - 1)
+		fmt.Printf("Scraping %-30s #%-4d\r", "Malaysia", i - 1)
 		tds := s.Find("td")
-		city_id := fmt.Sprintf("MY%d", i - 1)
-		psi_value := tds.Eq(7).Find("font b").Text()
-		//Remove random characters
-		psi_value = strings.Replace(psi_value, " ", "", -1)
-		psi_value = strings.Replace(psi_value, "*", "", -1)
-		psi_value = strings.Replace(psi_value, "&", "", -1)
-		psi_value = strings.Replace(psi_value, "a", "", -1)
-		psi_value = strings.Replace(psi_value, "b", "", -1)
-		psi_value = strings.Replace(psi_value, "c", "", -1)
-		psi_value = strings.Replace(psi_value, "d", "", -1)
-
 		state := tds.Eq(0).Text()
+		city_id := fmt.Sprintf("MY%d", i - 1)
 		city_name := fmt.Sprintf("%s, %s", tds.Eq(1).Text(), state)
+		psi_value := ""
+		now := time.Now()
+		data_collect_hour := now.Hour()
+
+		for i := 7; i >= 2; i-- {
+			psi_value = CleanData(tds.Eq(i).Find("font b").Text())
+			if len(psi_value) == 0 {
+				continue
+			}
+
+			_, parse_err := strconv.Atoi(psi_value)
+			if parse_err == nil {
+				data_collect_hour = (GetIndex() - 1) * 6 + (i - 2)
+				break
+			}
+		}
+
+		scrape_time := time.Date(now.Year(), now.Month(), now.Day(), data_collect_hour, 0, 0, 0, now.Location())
+		scrape_time_millis := scrape_time.UnixNano() / 1000000
 
 		if (len(psi_value) == 0) || (len(city_name) == 0) {
 			log.Printf("[MALAYSIA] Scrape failure: '%s' '%s'\n", psi_value, city_name)
@@ -71,10 +111,10 @@ func ScrapeMalaysia() ([]db.City, []ScrapeError) {
 			myFailures = append(myFailures, ScrapeError{city_name, psi_value, "Malaysia"})
 		} else {
 			my_temp := (int)(weather.GetWeather(city_id, city_name, state).Temp)
-			cities = append(cities, db.City{Id: city_id, Name: city_name, Data: psi, Temp: my_temp, AdvisoryCode: GetMalaysiaAdvisory(psi), ScrapeTime: GetUnixTime()})
+			cities = append(cities, db.City{Id: city_id, Name: city_name, Data: psi, Temp: my_temp, AdvisoryCode: GetMalaysiaAdvisory(psi), ScrapeTime: scrape_time_millis})
 		}
 	})
-
-	fmt.Println("Scraping Malaysia Complete")
+	
+	fmt.Printf("Scraping %-30s Complete\n", "Malaysia")
 	return cities, myFailures
 }
