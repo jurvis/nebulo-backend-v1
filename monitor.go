@@ -9,6 +9,7 @@ import (
 	"os"
 	"log"
 	"fmt"
+	"time"
 )
 
 type PushInfo struct {
@@ -20,7 +21,16 @@ type PushInfo struct {
 
 type NearbyCitiesResponse struct {
 	Success bool			`json:"success"`
-	NearbyCities []db.City	`json:"nearby_cities"`
+	NearbyCities []NearbyCity	`json:"nearby_cities"`
+}
+
+type NearbyCity struct {
+	Id string			`json:"id"`
+	Name string			`json:"city_name"`
+	AdvisoryCode int	`json:"advisory_code"`
+	Data int			`json:"data"`
+	Temp int			`json:"temperature"`
+	TimeScraped string 	`json:"time_scraped"`
 }
 
 type Point struct {
@@ -83,13 +93,21 @@ func getData(w http.ResponseWriter, r *http.Request) {
 				p := Point{Lat: lat, Lng: lng, Wait: make(chan []db.City)}
 				jobs <- &p
 				var nearbyLocs []db.City
+				var formattedResponse []NearbyCity
 				nearbyLocs = <- p.Wait //Wait for db to process and feed back data
 				close(p.Wait)
+
+				//Import db.City into NearbyCity
+				for _, db_city := range nearbyLocs {
+					time_scraped := time.Unix(0, db_city.ScrapeTime * 1000000)
+					formattedResponse = append(formattedResponse, NearbyCity{db_city.Id, db_city.Name, db_city.AdvisoryCode, db_city.Data, db_city.Temp, time_scraped.UTC().Format("2006-01-02T15:04:05Z")})
+				}
+
 				var root NearbyCitiesResponse;
 				if len(nearbyLocs) != 0 {
-					root = NearbyCitiesResponse{Success : true, NearbyCities : nearbyLocs}
+					root = NearbyCitiesResponse{Success : true, NearbyCities : formattedResponse}
 				} else {
-					root = NearbyCitiesResponse{Success : false, NearbyCities : make([]db.City, 0)}
+					root = NearbyCitiesResponse{Success : false, NearbyCities : make([]NearbyCity, 0)}
 				}
 				niceJson, _ := json.Marshal(root)
 				w.Write(niceJson)
