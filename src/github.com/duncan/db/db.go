@@ -66,6 +66,7 @@ func SaveData(cities []City) {
 			if city.Data == -1 {
 				//Use older values
 				city.Data = older_entry.Data
+				city.AdvisoryCode = older_entry.AdvisoryCode
 				city.ScrapeTime = older_entry.ScrapeTime
 			}
 		} else if UseNextAvailableId() {
