@@ -28,14 +28,18 @@ func GetHongKongAdvisory(value int) int {
 	}
 }
 
-func ScrapeHongKong() ([]db.City, []ScrapeError){
+func ScrapeHongKong(firstIndex int) ([]db.City, []ScrapeError){
 	var cities []db.City
 	var myFailures []ScrapeError
 
 	doc, err := goquery.NewDocument(HONGKONG_URL)
 	if err != nil {
+		fmt.Printf("Connect to %-30s: %s\n", "Hong Kong", "Failed")
+		connectFailures = append(connectFailures, ConnectError{"Hong Kong"})
 		return cities, myFailures
 	}
+
+	fmt.Printf("Connect to %-30s: %s\n", "Hong Kong", "Success")
 
 	now := time.Now()
 	scrape_time := now
@@ -59,25 +63,25 @@ func ScrapeHongKong() ([]db.City, []ScrapeError){
 			return //First few trs are headers
 		}
 		fmt.Printf("Scraping %-30s #%-4d\r", "Hong Kong", i - 3)
-		city_id := fmt.Sprintf("HK%d", i - 3)
+		city_id := firstIndex + (i - 3)
 		tds := s.Find("td")
 		psi_value := tds.Eq(6).Text()
 		city_name := tds.Eq(0).Text()
 
-		if (len(psi_value) == 0) || (len(city_name) == 0) {
-			log.Printf("[HONG KONG] Scrape failure: '%s' '%s'\n", psi_value, city_name)
-			myFailures = append(myFailures, ScrapeError{city_name, psi_value, "Hong Kong"})
+		if len(city_name) == 0 {
 			return
 		}
 
 		psi, e1 := strconv.ParseFloat(psi_value, 64)
-		if e1 != nil {
+
+		if (e1 != nil || len(psi_value) == 0) {
 			log.Printf("[HONG KONG] Scrape failure: '%s' '%s'\n", psi_value, city_name)
 			myFailures = append(myFailures, ScrapeError{city_name, psi_value, "Hong Kong"})
-		} else {
-			hk_temp := (int)(weather.GetWeather(city_id, city_name, "Hong Kong").Temp)
-			cities = append(cities, db.City{Id: city_id, Name: city_name, Data: int(psi), Temp: hk_temp, AdvisoryCode: GetHongKongAdvisory(int(psi)), ScrapeTime: (scrape_time.UnixNano() / 1000000)})
+			psi = -1
 		}
+		
+		hk_temp := (int)(weather.GetWeather(city_id, city_name, "Hong Kong").Temp)
+		cities = append(cities, db.City{Id: city_id, Name: city_name, Data: int(psi), Temp: hk_temp, AdvisoryCode: GetHongKongAdvisory(int(psi)), ScrapeTime: (scrape_time.UnixNano() / 1000000)})
 		numGeneralStations++
 	})
 
@@ -88,25 +92,25 @@ func ScrapeHongKong() ([]db.City, []ScrapeError){
 			return //First few trs are headers
 		}
 		fmt.Printf("Scraping %-30s #%-4d\r", "Hong Kong", i - 3 + numGeneralStations)
-		city_id := fmt.Sprintf("HK%d", i - 3 + numGeneralStations)
+		city_id := firstIndex + (i - 3) + numGeneralStations
 		tds := s.Find("td")
 		psi_value := tds.Eq(6).Text()
 		city_name := tds.Eq(0).Text()
 
-		if (len(psi_value) == 0) || (len(city_name) == 0) {
-			log.Printf("[HONG KONG] Scrape failure: '%s' '%s'\n", psi_value, city_name)
-			myFailures = append(myFailures, ScrapeError{city_name, psi_value, "Hong Kong"})
+		if len(city_name) == 0 {
 			return
 		}
 
 		psi, e1 := strconv.ParseFloat(psi_value, 64)
-		if e1 != nil {
+
+		if (e1 != nil || len(psi_value) == 0) {
 			log.Printf("[HONG KONG] Scrape failure: '%s' '%s'\n", psi_value, city_name)
 			myFailures = append(myFailures, ScrapeError{city_name, psi_value, "Hong Kong"})
-		} else {
-			hk_temp := (int)(weather.GetWeather(city_id, city_name, "Hong Kong").Temp)
-			cities = append(cities, db.City{Id: city_id, Name: city_name, Data: int(psi), Temp: hk_temp, AdvisoryCode: GetHongKongAdvisory(int(psi)), ScrapeTime: (scrape_time.UnixNano() / 1000000)})
+			psi = -1
 		}
+
+		hk_temp := (int)(weather.GetWeather(city_id, city_name, "Hong Kong").Temp)
+		cities = append(cities, db.City{Id: city_id, Name: city_name, Data: int(psi), Temp: hk_temp, AdvisoryCode: GetHongKongAdvisory(int(psi)), ScrapeTime: (scrape_time.UnixNano() / 1000000)})
 	})
 	
 	fmt.Printf("Scraping %-30s Complete\n", "Hong Kong")

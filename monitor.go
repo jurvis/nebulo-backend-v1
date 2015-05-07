@@ -15,7 +15,7 @@ import (
 type PushInfo struct {
 	UUID		string
 	DeviceType	string
-	Preference	string
+	Preference	int
 	Push		bool
 }
 
@@ -25,7 +25,7 @@ type NearbyCitiesResponse struct {
 }
 
 type NearbyCity struct {
-	Id string			`json:"id"`
+	Id int				`json:"id"`
 	Name string			`json:"city_name"`
 	AdvisoryCode int	`json:"advisory_code"`
 	Data int			`json:"data"`
@@ -150,10 +150,10 @@ func handlePushDevice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//Validation of preference
-	if (k.Push) && (len(k.Preference) == 0) {
+	/*if (k.Push) && (len(k.Preference) == 0) {
 		w.Write(getJSONStatusMessage("invalid"))
 		return
-	}
+	}*/
 
 	var saveStatus bool
 

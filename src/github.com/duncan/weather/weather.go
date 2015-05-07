@@ -55,7 +55,7 @@ func ClearCache() {
 }
 
 //Get weather data
-func GetWeather(id, name, failsafe string) WeatherData {
+func GetWeather(id int, name string, failsafe string) WeatherData {
 	ClearCache()
 	owm := GetOWMWeather(name, failsafe)
 	if owm.Temp == INVALID_TEMP {
@@ -147,7 +147,7 @@ func GetOWMWeather(name, failsafe string) WeatherData {
 
 		var results OWMWeatherResponse
 		json.Unmarshal(contents, &results)
-		if len(results.Name) > 0 {
+		if results.Name != "" {
 			results.Main.Temp -= 273.15 //Convert Kelvin to Celsius
 			res.Body.Close()
 			good := WeatherData{Temp: results.Main.Temp}

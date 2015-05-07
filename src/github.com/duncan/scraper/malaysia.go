@@ -59,14 +59,18 @@ func CleanData(orig string) string {
 	return orig
 }
 
-func ScrapeMalaysia() ([]db.City, []ScrapeError) {
+func ScrapeMalaysia(firstIndex int) ([]db.City, []ScrapeError) {
 	var cities []db.City
 	var myFailures []ScrapeError
 
 	doc, err := goquery.NewDocument(GetPageUrl())
 	if err != nil {
+		fmt.Printf("Connect to %-30s: %s\n", "Malaysia", "Failed")
+		connectFailures = append(connectFailures, ConnectError{"Malaysia"})
 		return cities, myFailures
 	}
+
+	fmt.Printf("Connect to %-30s: %s\n", "Malaysia", "Success")
 
 	list := doc.Find("center div#wrapper div#right table.table1 tbody")
 
@@ -77,11 +81,16 @@ func ScrapeMalaysia() ([]db.City, []ScrapeError) {
 		fmt.Printf("Scraping %-30s #%-4d\r", "Malaysia", i - 1)
 		tds := s.Find("td")
 		state := tds.Eq(0).Text()
-		city_id := fmt.Sprintf("MY%d", i - 1)
-		city_name := fmt.Sprintf("%s, %s", tds.Eq(1).Text(), state)
+		city_id := firstIndex + (i - 1)
+		//city_name := fmt.Sprintf("%s, %s", tds.Eq(1).Text(), state)
+		city_name := tds.Eq(1).Text()
 		psi_value := ""
 		now := time.Now()
 		data_collect_hour := now.Hour()
+
+		if len(city_name) == 0 {
+			return
+		}
 
 		for i := 7; i >= 2; i-- {
 			psi_value = CleanData(tds.Eq(i).Find("font b").Text())
@@ -99,20 +108,16 @@ func ScrapeMalaysia() ([]db.City, []ScrapeError) {
 		scrape_time := time.Date(now.Year(), now.Month(), now.Day(), data_collect_hour, 0, 0, 0, now.Location())
 		scrape_time_millis := scrape_time.UnixNano() / 1000000
 
-		if (len(psi_value) == 0) || (len(city_name) == 0) {
+		psi, e1 := strconv.Atoi(psi_value)
+
+		if (e1 != nil || len(psi_value) == 0) {
 			log.Printf("[MALAYSIA] Scrape failure: '%s' '%s'\n", psi_value, city_name)
 			myFailures = append(myFailures, ScrapeError{city_name, psi_value, "Malaysia"})
-			return
+			psi = -1
 		}
 
-		psi, e1 := strconv.Atoi(psi_value)
-		if e1 != nil {
-			log.Printf("[MALAYSIA] Scrape failure: '%s' '%s'\n", psi_value, city_name)
-			myFailures = append(myFailures, ScrapeError{city_name, psi_value, "Malaysia"})
-		} else {
-			my_temp := (int)(weather.GetWeather(city_id, city_name, state).Temp)
-			cities = append(cities, db.City{Id: city_id, Name: city_name, Data: psi, Temp: my_temp, AdvisoryCode: GetMalaysiaAdvisory(psi), ScrapeTime: scrape_time_millis})
-		}
+		my_temp := (int)(weather.GetWeather(city_id, city_name, state).Temp)
+		cities = append(cities, db.City{Id: city_id, Name: city_name, Data: psi, Temp: my_temp, AdvisoryCode: GetMalaysiaAdvisory(psi), ScrapeTime: scrape_time_millis})
 	})
 	
 	fmt.Printf("Scraping %-30s Complete\n", "Malaysia")

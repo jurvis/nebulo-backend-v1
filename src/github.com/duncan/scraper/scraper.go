@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"time"
+	"strings"
 	"github.com/duncan/db"
 	"github.com/duncan/email"
 	"github.com/duncan/push"
@@ -16,9 +17,16 @@ type ScrapeError struct {
 	Country string
 }
 
+type ConnectError struct {
+	Country string
+}
+
 var failures []ScrapeError
+var connectFailures []ConnectError
 
 var SCRAPE_INTERVAL_MINUTE int = 30
+
+var BLACKLIST []string = []string{"Residence for Dept. of Primary Industries and Mines, Samut Prakan"}
 
 //Return the Unix Epoch in millis
 func GetUnixTime() int64 {
@@ -26,15 +34,27 @@ func GetUnixTime() int64 {
 }
 
 func DoAlert() {
-	body := "Hi Masters, I detected some failures:\n\n"
+	body := "FAILURES\n"
+	//body := "Hi Masters, I detected some failures:\n\n"
 
-	for _, failure := range failures {
-		body += fmt.Sprintf("%s city '%s' : %s\n", failure.Country, failure.City_name, failure.Data)
+	for _, connectFailure := range connectFailures {
+		body += fmt.Sprintf("%s\n==============\nConnection Failed. Site may be down. Nothing scraped.\n", connectFailure.Country)
 	}
 
-	body += "\nCurrent scrape policy: Cities that scrape successfully are saved, while cities that scrape unsuccessfully retain their last good value. If there has never been a good value, it returns -1.\n"
-	body += "\nCurrent push policy: Scraped data must be different from their existing equivalent in the DB and must also be >100 to get push notifications.\n"
-	body += "\nPlease do check what went wrong. Thanks."
+	country := ""
+	for _, failure := range failures {
+		if failure.Country != country {
+			country = failure.Country
+			body += fmt.Sprintf("\n\n%s\n==============\n", country)
+		}
+		body += fmt.Sprintf("%s: '%s'\n", failure.City_name, failure.Data)
+	}
+
+	body += "\n\nCURRENT POLICIES\n"
+	body += "\nScrape\nCities that scrape successfully are saved, while cities that scrape unsuccessfully retain their last good value. If there has never been a good value, it returns -1.\n"
+	body += "\nAPI\nCities with Data: -1 or Temp: 99999 (the pre-defined invalid temp) are NOT RETURNED.\n"
+	body += "\nPush\nScraped data must be different from their existing equivalent in the DB and must also be >100 to get push notifications.\n"
+	//body += "\nPlease do check what went wrong. Thanks."
 
 	go email.Alert("Nebulo Backend Scraping Failure!", body)
 	fmt.Println("An email was sent to notify of the failures.")
@@ -46,48 +66,43 @@ func ScrapeInterval() {
 		//Clear counters
 		start := time.Now()
 
-		fmt.Println("=====SCRAPER BEGIN=====")
-		log.Println("=====SCRAPER BEGIN=====")
+		fmt.Println("=====SCRAPER START=====")
+		log.Println("=====SCRAPER START=====")
 
 		var allCities []db.City
 
 		//Clear failures
 		failures = nil
+		connectFailures = nil
 
 		weather.ClearCache()
 
-		var TOTAL_COUNTRIES = 4
+		var count int = 0
 
 		//Scrape
-		jobChannel := make(chan bool, TOTAL_COUNTRIES) //Total no
-		go func() {
-			sg, fail := ScrapeSingapore()
-			failures = append(failures, fail...)
-			allCities = append(allCities, sg...)
-			jobChannel <- true
-		}()
-		go func() {
-			my, fail := ScrapeMalaysia()
-			failures = append(failures, fail...)
-			allCities = append(allCities, my...)
-			jobChannel <- true
-		}()
-		go func() {
-			hk, fail := ScrapeHongKong()
-			failures = append(failures, fail...)
-			allCities = append(allCities, hk...)
-			jobChannel <- true
-		}()
-		go func() {
-			th, fail := ScrapeThailand()
-			failures = append(failures, fail...)
-			allCities = append(allCities, th...)
-			jobChannel <- true
-		}()
+		sg, sg_fail := ScrapeSingapore(count)
+		failures = append(failures, sg_fail...)
+		allCities = append(allCities, sg...)
 
-		for i := 0; i < TOTAL_COUNTRIES; i++ { //Total no
-			<-jobChannel
-		}
+		count += len(sg)
+
+		hk, hk_fail := ScrapeHongKong(count)
+		failures = append(failures, hk_fail...)
+		allCities = append(allCities, hk...)
+
+		count += len(hk)
+
+		my, my_fail := ScrapeMalaysia(count)
+		failures = append(failures, my_fail...)
+		allCities = append(allCities, my...)
+
+		count += len(my)
+
+		th, th_fail := ScrapeThailand(count)
+		failures = append(failures, th_fail...)
+		allCities = append(allCities, th...)
+
+		count += len(th)
 
 		for _, city := range allCities {
 			push.Push(city)
@@ -100,11 +115,11 @@ func ScrapeInterval() {
 		log.Printf("Scraping complete. %d cities were successfully scraped.\n", len(allCities))
 		fmt.Printf("Duration elapsed: %dms.\n", timeElapsedMillis)
 
-		if len(failures) > 0 {
+		if (len(failures) > 0 || len(connectFailures) > 0) {
 			DoAlert()
 		}
 		fmt.Println("Saving data")
-		db.SaveData(allCities)
+		db.SaveData(GarbageCollection(allCities))
 		fmt.Println("Saved data")
 
 		fmt.Printf("Scraping complete. Runs again in %d minutes\n", SCRAPE_INTERVAL_MINUTE)
@@ -114,4 +129,24 @@ func ScrapeInterval() {
 		//Delay for next run
 		time.Sleep(time.Duration(SCRAPE_INTERVAL_MINUTE) * time.Minute)
 	}
+}
+
+func contains(s []string, e string) bool {
+    for _, a := range s {
+    	if strings.Contains(a, e) {
+    		return true
+    	}
+    }
+    return false
+}
+
+func GarbageCollection(allCities []db.City) []db.City {
+	var ret []db.City
+	for _, city := range allCities {
+		if (!contains(BLACKLIST, city.Name)) {
+			//Delete it
+			ret = append(ret, city)
+		}
+	}
+	return ret
 }

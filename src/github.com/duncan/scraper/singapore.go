@@ -30,14 +30,18 @@ func GetSingaporeAdvisory(value int) int {
 	}
 }
 
-func ScrapeSingapore() ([]db.City, []ScrapeError) {
+func ScrapeSingapore(firstIndex int) ([]db.City, []ScrapeError) {
 	var cities []db.City
 	var myFailures []ScrapeError
 
 	doc, err := goquery.NewDocument(SINGAPORE_URL)
 	if err != nil {
+		fmt.Printf("Connect to %-30s: %s\n", "Singapore", "Failed")
+		connectFailures = append(connectFailures, ConnectError{"Singapore"})
 		return cities, myFailures
 	}
+
+	fmt.Printf("Connect to %-30s: %s\n", "Singapore", "Success")
 
 	//Use NEA time
 
@@ -68,11 +72,11 @@ func ScrapeSingapore() ([]db.City, []ScrapeError) {
 
 	list := doc.Find("ul.list")
 
-	sg_temp := (int)(weather.GetWeather("SG0", "Singapore", "Singapore").Temp)
+	sg_temp := (int)(weather.GetWeather(0, "Singapore", "Singapore").Temp)
 
 	list.Children().Each(func(i int, s *goquery.Selection) {
 		fmt.Printf("Scraping %-30s #%-4d\r", "Singapore", i)
-		city_id := fmt.Sprintf("SG%d", i)
+		city_id := firstIndex + i
 		psi_value := s.Find("span.psi-value").Text()
 		//Remove random characters
 		psi_value = strings.Replace(psi_value, " ", "", -1)
@@ -81,19 +85,17 @@ func ScrapeSingapore() ([]db.City, []ScrapeError) {
 		direction := s.Find("span.direction").Text() //e.g. North
 		city_name := fmt.Sprintf("%s, Singapore", direction)
 
-		if (len(psi_value) == 0) || (len(direction) == 0) {
-			log.Printf("[SINGAPORE] Scrape failure: '%s' '%s'\n", psi_value, direction)
-			myFailures = append(myFailures, ScrapeError{city_name, psi_value, "Singapore"})
+		if len(city_name) == 0 {
 			return
 		}
 
 		psi, e1 := strconv.Atoi(psi_value)
-		if e1 != nil {
+		if (e1 != nil || len(psi_value) == 0 || len(direction) == 0) {
 			log.Printf("[SINGAPORE] Scrape failure: '%s' '%s'\n", psi_value, direction)
 			myFailures = append(myFailures, ScrapeError{city_name, psi_value, "Singapore"})
-		} else {
-			cities = append(cities, db.City{Id: city_id, Name: city_name, Data: psi, Temp: sg_temp, AdvisoryCode: GetSingaporeAdvisory(psi), ScrapeTime: (scrape_time.UnixNano() / 1000000)})
+			psi = -1
 		}
+		cities = append(cities, db.City{Id: city_id, Name: city_name, Data: psi, Temp: sg_temp, AdvisoryCode: GetSingaporeAdvisory(psi), ScrapeTime: (scrape_time.UnixNano() / 1000000)})
 	})
 
 	fmt.Printf("Scraping %-30s Complete\n", "Singapore")

@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 	"strconv"
-	"regexp"
+	//"regexp"
 	"net/http"
 	"net/url"
 	"io/ioutil"
@@ -66,7 +66,7 @@ func locationWorker() {
 		if coords == nil {
 			log.Fatal("Could not obtain coordinates for %s, locations generation aborted.\n", j.City.Name)
 		}
-		locationResults <- LocationResult{ArrayIndex: j.ArrayIndex, StatementFragment: fmt.Sprintf(" ((SELECT id FROM data WHERE city_name = '%s'), %f, %f),", j.City.Name, coords.Lat, coords.Lng)}
+		locationResults <- LocationResult{ArrayIndex: j.ArrayIndex, StatementFragment: fmt.Sprintf(" ('%s', %f, %f),", j.City.Name, coords.Lat, coords.Lng)}
 	}
 }
 
@@ -215,15 +215,15 @@ func populate() {
 	}
 
 	//Populate languages
-	pattern, err := regexp.Compile("&lang=(.*)")
+	/*pattern, err := regexp.Compile("&lang=(.*)")
 	if err != nil {
 		fmt.Println("Regex pattern compilation error!")
 		return
-	}
+	}*/
 
 	fmt.Println("Retrieving list of languages...")
 
-	doc.Find("div#header div#header-in div[style*=\"position:absolute;left:48px;margin-top:5px;font-size:12px;\"]").Each(func(i int, s *goquery.Selection) {
+	/*doc.Find("div#header div#header-in div[style*=\"position:absolute;left:48px;margin-top:5px;font-size:12px;\"]").Each(func(i int, s *goquery.Selection) {
 		a := s.Find("a")
 		for i := range a.Nodes {
 			ddd := a.Eq(i)
@@ -231,7 +231,7 @@ func populate() {
 			languages = append(languages, pattern.FindStringSubmatch(href)[1])
 		}
 		fmt.Printf("Populated %d languages.\n", len(languages))
-	})
+	})*/
 
 	//Populate cities under countries
 	doc.Find("div.whitebody center").Each(func(i int, s *goquery.Selection) {
