@@ -33,9 +33,23 @@ type NearbyCity struct {
 	TimeScraped string 	`json:"time_scraped"`
 }
 
+type AllCitiesResponse struct {
+	Success bool			`json:"success"`
+	Cities []AllCity		`json:"cities"`
+}
+
+type AllCity struct {
+	Id int 				`json:"id"`
+	Name string			`json:"city_name"`
+}
+
 type Point struct {
 	Lat float64
 	Lng float64
+	Wait chan []db.City
+}
+
+type AllCitiesJob struct {
 	Wait chan []db.City
 }
 
@@ -44,6 +58,7 @@ type LegacyJob struct {
 }
 
 var jobs chan *Point
+var allcities_jobs chan *AllCitiesJob
 var legacy_jobs chan *LegacyJob
 
 func getJSONStatusMessage(msg string) []byte {
@@ -72,6 +87,33 @@ func legacy(w http.ResponseWriter, r *http.Request) {
 func debug_only(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(getJSONStatusMessage("invalid"))
+}
+
+//For all cities
+func getAllCities(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	acj := AllCitiesJob{Wait: make(chan []db.City)}
+	allcities_jobs <- &acj
+	var allLocs []db.City
+	var formattedResponse []AllCity
+	allLocs = <- acj.Wait //Wait for db to process and feed back data
+	close(acj.Wait)
+
+	//Import db.City into AllCity
+	for _, db_city := range allLocs {
+		formattedResponse = append(formattedResponse, AllCity{Id: db_city.Id, Name: db_city.Name})
+	}
+
+	var root AllCitiesResponse;
+	if len(allLocs) != 0 {
+		root = AllCitiesResponse{Success : true, Cities : formattedResponse}
+	} else {
+		root = AllCitiesResponse{Success : false, Cities : make([]AllCity, 0)}
+	}
+	niceJson, _ := json.Marshal(root)
+	w.Write(niceJson)
+	return
 }
 
 //For clients getting data
@@ -179,6 +221,13 @@ func legacy_worker() {
 	}
 }
 
+func allcities_worker() {
+	for j := range allcities_jobs {
+		result := db.GetAllLocations()
+		j.Wait <- result
+	}
+}
+
 func worker() {
 	for j := range jobs {
 		result := db.GetNearbyLocations(j.Lat, j.Lng)
@@ -202,10 +251,14 @@ func main() {
 
 	//Worker Pool
 	jobs = make(chan *Point, 100)
+	allcities_jobs = make(chan *AllCitiesJob, 500)
 	legacy_jobs = make(chan *LegacyJob, 100)
 
 	for w := 1; w <= 20; w++ {
 		go worker()
+	}
+	for w := 1; w <= 20; w++ {
+		go allcities_worker()
 	}
 	for w := 1; w <= 20; w++ {
 		go legacy_worker()
@@ -217,6 +270,7 @@ func main() {
 
 	go scraper.ScrapeInterval()
 	http.HandleFunc("/", debug_only)
+	http.HandleFunc("/api/all", getAllCities)
 	http.HandleFunc("/api/nearby", getData)
 	http.HandleFunc("/get", legacy)
 	http.HandleFunc("/post", handlePushDevice)

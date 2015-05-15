@@ -223,6 +223,42 @@ func GetSavedData(id int) (City, error) {
 	return City{}, errors.New("Nothing to return!")
 }
 
+//Return all cities
+func GetAllLocations() []City {
+	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
+
+	if err != nil {
+		log.Fatal(err)
+		return nil
+	}
+
+	defer db.Close()
+
+	var cities []City
+	//This query automatically ignores data values of -1.
+	locations, er := db.Query(`SELECT * FROM data ORDER BY id ASC;`)
+
+	defer locations.Close()
+
+	if er != nil {
+		log.Fatal(er)
+		return nil
+	}
+
+	for locations.Next() {
+		var id int
+		var city_name string
+		var data int
+		var temp int
+		var advisory int
+		var scrapetime int64
+
+		locations.Scan(&id, &city_name, &data, &temp, &advisory, &scrapetime)
+		cities = append(cities, City{id, city_name, advisory, data, temp, scrapetime})
+	}
+	return cities
+}
+
 //Return the closest locations based on lat and lon. Uses PostgreSQL extensions
 func GetNearbyLocations(lat, lng float64) []City {
 	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
