@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 	"github.com/duncan/config"
-	"gopkg.in/redis.v2"
+	//"gopkg.in/redis.v2"
 	"database/sql"
 	_ "github.com/lib/pq"
 	"errors"
@@ -39,8 +39,8 @@ type LegacyCity struct {
 
 var db_config config.DbCfg = config.DbConfig()
 
-var Redis_URLs *redis.Client = redis.NewClient(&redis.Options{Network:"tcp", Addr:db_config.Redis.Address, DB:0});
-var Redis_DataHolder *redis.Client = redis.NewClient(&redis.Options{Network:"tcp", Addr:db_config.Redis.Address, DB:1});
+//var Redis_URLs *redis.Client = redis.NewClient(&redis.Options{Network:"tcp", Addr:db_config.Redis.Address, DB:0});
+//var Redis_DataHolder *redis.Client = redis.NewClient(&redis.Options{Network:"tcp", Addr:db_config.Redis.Address, DB:1});
 
 var PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE string = db_config.Database.Username, db_config.Database.Password, db_config.Database.Dbname, "disable"
 
@@ -166,11 +166,13 @@ func UseNextAvailableId() bool {
 func GetNextAvailableId() int {
 	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
 
+	defer db.Close()
+
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	locations, er := db.Query("SELECT COUNT(*) AS count FROM data")
+	locations, er := db.Query("SELECT COUNT(*) AS count FROM data;")
 
 	defer locations.Close()
 
@@ -183,8 +185,6 @@ func GetNextAvailableId() int {
 		locations.Scan(&count)
 		return count
 	}
-
-	defer db.Close()
 
 	return -1
 }
