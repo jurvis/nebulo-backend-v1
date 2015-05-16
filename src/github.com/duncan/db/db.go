@@ -28,7 +28,7 @@ type City struct {
 //Structs below are for LEGACY clients
 type LegacyWeather struct {
 	PM25 string		`json:"PM25"`
-	PSI string 		`json:PSI"`
+	PSI string 		`json:"PSI"`
 	Temp string 	`json:Temp"`
 }
 
@@ -38,22 +38,35 @@ type LegacyCity struct {
 }
 
 var db_config config.DbCfg = config.DbConfig()
+var db *sql.DB
 
 //var Redis_URLs *redis.Client = redis.NewClient(&redis.Options{Network:"tcp", Addr:db_config.Redis.Address, DB:0});
 //var Redis_DataHolder *redis.Client = redis.NewClient(&redis.Options{Network:"tcp", Addr:db_config.Redis.Address, DB:1});
 
 var PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE string = db_config.Database.Username, db_config.Database.Password, db_config.Database.Dbname, "disable"
 
+//Initialise the DB
+func InitialiseDB() {
+	database, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
+	if err != nil {
+		log.Fatal(err)
+	}
+	db = database
+}
+
+//De-initialise the DB
+func CloseDB() {
+	db.Close()
+}
+
 //Save data into DB
 func SaveData(cities []City) {
-	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
+	tx, err := db.Begin()
 
 	if err != nil {
 		log.Fatal(err)
 		return
 	}
-
-	defer db.Close()
 
 	query := "BEGIN; CREATE TEMPORARY TABLE newvals (id INTEGER, city_name VARCHAR(100), data INTEGER, temp INTEGER, advisory INTEGER, timestamp BIGINT); "
 	query += "INSERT INTO newvals (id, city_name, data, temp, advisory, timestamp) VALUES "
@@ -82,12 +95,14 @@ func SaveData(cities []City) {
 	query += "INSERT INTO data SELECT newvals.id, newvals.city_name, newvals.data, newvals.temp, newvals.advisory, newvals.timestamp FROM newvals LEFT OUTER JOIN data ON (data.id = newvals.id) WHERE data.id IS NULL; "
 	query += "COMMIT;"
 
-	_, error := db.Exec(query)
+	_, error := tx.Exec(query)
 
 	if error != nil {
 		log.Fatal(error)
 		return
 	}
+
+	tx.Commit()
 }
 
 //Return legacy status string. Not present in Nebulo 2.0+
@@ -105,16 +120,14 @@ func getLegacyStatus(pm25 int) string {
 
 //Return Central, Singapore's data for legacy calls
 func GetLegacyData() *LegacyCity {
-	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
+	tx, err := db.Begin()
 
 	if err != nil {
 		log.Fatal(err)
 		return nil
 	}
 
-	defer db.Close()
-
-	query, er := db.Query("SELECT AVG(data) AS \"data\", AVG(temp) AS \"temp\" FROM data WHERE city_name LIKE '%Singapore';")
+	query, er := tx.Query("SELECT AVG(data) AS \"data\", AVG(temp) AS \"temp\" FROM data WHERE city_name LIKE '%Singapore';")
 
 	if er != nil {
 		return nil
@@ -125,21 +138,24 @@ func GetLegacyData() *LegacyCity {
 	for query.Next() {
 		var data, temp float64
 		query.Scan(&data, &temp)
+		tx.Commit()
 		return &LegacyCity{Status: getLegacyStatus(int(data)), Weather: LegacyWeather{PM25: strconv.Itoa(int(data)), PSI: "N/A", Temp: strconv.Itoa(int(temp))}}
 	}
+
+	tx.Commit()
 
 	return nil
 }
 
 //Check whether need next avail id
 func UseNextAvailableId() bool {
-	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
+	tx, err := db.Begin()
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	locations, er := db.Query("SELECT COUNT(*) AS count FROM data")
+	locations, er := tx.Query("SELECT COUNT(*) AS count FROM data")
 
 	defer locations.Close()
 
@@ -153,8 +169,6 @@ func UseNextAvailableId() bool {
 		locations.Scan(&count)
 	}
 
-	defer db.Close()
-
 	if count == 0 {
 		return false
 	} else {
@@ -164,15 +178,13 @@ func UseNextAvailableId() bool {
 
 //Return next available index for country (for appending to bottom)
 func GetNextAvailableId() int {
-	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
-
-	defer db.Close()
+	tx, err := db.Begin()
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	locations, er := db.Query("SELECT COUNT(*) AS count FROM data;")
+	locations, er := tx.Query("SELECT COUNT(*) AS count FROM data;")
 
 	defer locations.Close()
 
@@ -191,16 +203,14 @@ func GetNextAvailableId() int {
 
 //Get the saved data for comparison
 func GetSavedData(id int) (City, error) {
-	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
+	tx, err := db.Begin()
 
 	if err != nil {
 		log.Fatal(err)
 		return City{}, errors.New("Error accessing db!")
 	}
 
-	defer db.Close()
-
-	locations, er := db.Query(`SELECT * FROM data WHERE id=$1`, id)
+	locations, er := tx.Query(`SELECT * FROM data WHERE id=$1`, id)
 
 	defer locations.Close()
 
@@ -217,26 +227,27 @@ func GetSavedData(id int) (City, error) {
 		var advisory int
 		var scrapetime int64
 		locations.Scan(&id, &city_name, &data, &temp, &advisory, &scrapetime)
+		tx.Commit()
 		return City{id, city_name, advisory, data, temp, scrapetime}, nil
 	}
+
+	tx.Commit()
 
 	return City{}, errors.New("Nothing to return!")
 }
 
 //Return all cities
 func GetAllLocations() []City {
-	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
+	tx, err := db.Begin()
 
 	if err != nil {
 		log.Fatal(err)
 		return nil
 	}
 
-	defer db.Close()
-
 	var cities []City
-	//This query automatically ignores data values of -1.
-	locations, er := db.Query(`SELECT * FROM data ORDER BY id ASC;`)
+	
+	locations, er := tx.Query(`SELECT * FROM data ORDER BY id ASC;`)
 
 	defer locations.Close()
 
@@ -256,23 +267,22 @@ func GetAllLocations() []City {
 		locations.Scan(&id, &city_name, &data, &temp, &advisory, &scrapetime)
 		cities = append(cities, City{id, city_name, advisory, data, temp, scrapetime})
 	}
+	tx.Commit()
 	return cities
 }
 
 //Return the closest locations based on lat and lon. Uses PostgreSQL extensions
 func GetNearbyLocations(lat, lng float64) []City {
-	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
+	tx, err := db.Begin()
 
 	if err != nil {
 		log.Fatal(err)
 		return nil
 	}
 
-	defer db.Close()
-
 	var cities []City
 	//This query automatically ignores data values of -1.
-	locations, er := db.Query(`SELECT locations.city_name, earth_distance(ll_to_earth($1, $2), ll_to_earth(lat, lng)) as distance FROM locations INNER JOIN data ON data.city_name = locations.city_name WHERE (EXISTS (SELECT 1 FROM data WHERE data.city_name = locations.city_name)) AND (data.data != -1) AND (data.temp != 99999) ORDER BY distance ASC LIMIT 5;`, lat, lng)
+	locations, er := tx.Query(`SELECT data.*, earth_distance(ll_to_earth($1, $2), ll_to_earth(lat, lng)) as distance FROM locations INNER JOIN data ON data.city_name = locations.city_name WHERE (EXISTS (SELECT 1 FROM data WHERE data.city_name = locations.city_name)) AND (data.data != -1) AND (data.temp != 99999) ORDER BY distance ASC LIMIT 5;`, lat, lng)
 
 	defer locations.Close()
 
@@ -289,32 +299,21 @@ func GetNearbyLocations(lat, lng float64) []City {
 		var temp int
 		var advisory int
 		var scrapetime int64
-		locations.Scan(&city_name, &distance)
-		d, errr := db.Query(`SELECT * FROM data WHERE city_name=$1;`, city_name)
-
-		if errr != nil {
-			log.Fatal(errr)
-			return nil
-		}
-
-		d.Next()
-		d.Scan(&id, &city_name, &data, &temp, &advisory, &scrapetime)
-		d.Close()
+		locations.Scan(&id, &city_name, &data, &temp, &advisory, &scrapetime, &distance)
 		cities = append(cities, City{id, city_name, advisory, data, temp, scrapetime})
 	}
+	tx.Commit()
 	return cities
 }
 
 //Remove a device from push database
 func RemovePushDevice(uuid, deviceType string) bool {
-	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
+	tx, err := db.Begin()
 
 	if err != nil {
 		log.Fatal(err)
 		return false
 	}
-
-	defer db.Close()
 
 	var table_name string
 
@@ -330,7 +329,7 @@ func RemovePushDevice(uuid, deviceType string) bool {
 
 	log.Printf("Removing %s device with UUID: %s\n", deviceType, uuid)
 
-	result, error := db.Exec("DELETE FROM $1 WHERE uuid='$2';", table_name, uuid) //Default to NULL for id
+	result, error := tx.Exec("DELETE FROM $1 WHERE uuid='$2';", table_name, uuid) //Default to NULL for id
 
 	if error != nil {
 		log.Println("Error occurred removing push device")
@@ -346,19 +345,18 @@ func RemovePushDevice(uuid, deviceType string) bool {
 	if ra == 0 {
 		return false
 	}
+	tx.Commit()
 	return true
 }
 
 //Save a push device into DB
 func SavePushDevice(uuid, deviceType string, preference int) bool{
-	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
+	tx, err := db.Begin()
 
 	if err != nil {
 		log.Fatal(err)
 		return false
 	}
-
-	defer db.Close()
 
 	var table_name string
 
@@ -374,7 +372,7 @@ func SavePushDevice(uuid, deviceType string, preference int) bool{
 
 	log.Printf("Saving %s device with UUID: %s\n", deviceType, uuid)
 
-	result, error := db.Exec(fmt.Sprintf("INSERT INTO %s (uuid, id) VALUES ('%s', %d);", table_name, uuid, preference)) //Default to NULL for id
+	result, error := tx.Exec(fmt.Sprintf("INSERT INTO %s (uuid, id) VALUES ('%s', %d);", table_name, uuid, preference)) //Default to NULL for id
 
 	if error != nil {
 		log.Println("Error occurred saving push device")
@@ -390,23 +388,23 @@ func SavePushDevice(uuid, deviceType string, preference int) bool{
 	if ra == 0 {
 		return false
 	}
+
+	tx.Commit()
 	return true
 }
 
 //Helper method to get devices with a certain preference from a certain table
 func GetDevicesByPreference(preference int, table_name string) []string {
-	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=%s", PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE))
+	tx, err := db.Begin()
 
 	if err != nil {
 		log.Fatal(err)
 		return []string{}
 	}
 
-	defer db.Close()
-
 	var devices []string
 
-	rows, er := db.Query(fmt.Sprintf("SELECT uuid FROM %s WHERE id=$1", table_name), preference)
+	rows, er := tx.Query(fmt.Sprintf("SELECT uuid FROM %s WHERE id=$1", table_name), preference)
 
 	defer rows.Close()
 
@@ -419,6 +417,8 @@ func GetDevicesByPreference(preference int, table_name string) []string {
 		err = rows.Scan(&uuid)
 		devices = append(devices, uuid)
 	}
+
+	tx.Commit()
 
 	return devices
 }

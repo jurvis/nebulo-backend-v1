@@ -264,6 +264,9 @@ func main() {
 		go legacy_worker()
 	}
 
+	//Initialise db
+	db.InitialiseDB()
+
 	fmt.Println("Nebulo Backend starting...")
 	log.Println("Backend started")
 	fmt.Println("If the server exits with obscure codes, check server.log")
@@ -276,5 +279,8 @@ func main() {
 	http.HandleFunc("/post", handlePushDevice)
 	http.ListenAndServe(":5000", nil)
 
+	db.CloseDB()
 	close(jobs)
+	close(allcities_jobs)
+	close(legacy_jobs)
 }
