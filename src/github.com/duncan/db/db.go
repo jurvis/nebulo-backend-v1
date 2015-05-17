@@ -51,6 +51,8 @@ func InitialiseDB() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	database.SetMaxIdleConns(5)
+	
 	db = database
 }
 
@@ -147,27 +149,28 @@ func GetLegacyData() *LegacyCity {
 	return nil
 }
 
-//Check whether need next avail id
-func UseNextAvailableId() bool {
+//Return number of cities
+func GetNumCities() int {
 	tx, err := db.Begin()
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	locations, er := tx.Query("SELECT COUNT(*) AS count FROM data")
+	count := 0
 
-	defer locations.Close()
+	er := tx.QueryRow("SELECT COUNT(*) AS count FROM data;").Scan(&count)
 
 	if er != nil {
 		log.Fatal(er)
 	}
 
-	var count int 
+	return count
+}
 
-	for locations.Next() {
-		locations.Scan(&count)
-	}
+//Check whether need next avail id
+func UseNextAvailableId() bool {
+	count := GetNumCities()
 
 	if count == 0 {
 		return false
@@ -178,27 +181,7 @@ func UseNextAvailableId() bool {
 
 //Return next available index for country (for appending to bottom)
 func GetNextAvailableId() int {
-	tx, err := db.Begin()
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	locations, er := tx.Query("SELECT COUNT(*) AS count FROM data;")
-
-	defer locations.Close()
-
-	if er != nil {
-		log.Fatal(er)
-	}
-
-	for locations.Next() {
-		var count int
-		locations.Scan(&count)
-		return count
-	}
-
-	return -1
+	return GetNumCities()
 }
 
 //Get the saved data for comparison
@@ -210,28 +193,23 @@ func GetSavedData(id int) (City, error) {
 		return City{}, errors.New("Error accessing db!")
 	}
 
-	locations, er := tx.Query(`SELECT * FROM data WHERE id=$1`, id)
+	var city_name string
+	var data int
+	var temp int
+	var advisory int
+	var scrapetime int64
 
-	defer locations.Close()
+	er := tx.QueryRow(`SELECT * FROM data WHERE id=$1`, id).Scan(&id, &city_name, &data, &temp, &advisory, &scrapetime)
 
 	if er != nil {
-		log.Fatal(er)
-		return City{}, errors.New("Error running db query!")
-	}
-
-	for locations.Next() {
-		var id int
-		var city_name string
-		var data int
-		var temp int
-		var advisory int
-		var scrapetime int64
-		locations.Scan(&id, &city_name, &data, &temp, &advisory, &scrapetime)
-		tx.Commit()
-		return City{id, city_name, advisory, data, temp, scrapetime}, nil
+		log.Println(er)
 	}
 
 	tx.Commit()
+
+	if len(city_name) > 0 {
+		return City{id, city_name, advisory, data, temp, scrapetime}, nil
+	}
 
 	return City{}, errors.New("Nothing to return!")
 }
@@ -284,8 +262,6 @@ func GetNearbyLocations(lat, lng float64) []City {
 	//This query automatically ignores data values of -1.
 	locations, er := tx.Query(`SELECT data.*, earth_distance(ll_to_earth($1, $2), ll_to_earth(lat, lng)) as distance FROM locations INNER JOIN data ON data.city_name = locations.city_name WHERE (EXISTS (SELECT 1 FROM data WHERE data.city_name = locations.city_name)) AND (data.data != -1) AND (data.temp != 99999) ORDER BY distance ASC LIMIT 5;`, lat, lng)
 
-	defer locations.Close()
-
 	if er != nil {
 		log.Fatal(er)
 		return nil
@@ -302,51 +278,9 @@ func GetNearbyLocations(lat, lng float64) []City {
 		locations.Scan(&id, &city_name, &data, &temp, &advisory, &scrapetime, &distance)
 		cities = append(cities, City{id, city_name, advisory, data, temp, scrapetime})
 	}
+	locations.Close()
 	tx.Commit()
 	return cities
-}
-
-//Remove a device from push database
-func RemovePushDevice(uuid, deviceType string) bool {
-	tx, err := db.Begin()
-
-	if err != nil {
-		log.Fatal(err)
-		return false
-	}
-
-	var table_name string
-
-	if strings.EqualFold(deviceType, "Android") {
-		table_name = "push_android"
-	} else if strings.EqualFold(deviceType, "iOS") {
-		table_name = "push_ios"
-	} else {
-		//What is this rogue OS?
-		log.Printf("Captured a rogue device push with unidentified OS: %s. Request denied.\n", deviceType)
-		return false
-	}
-
-	log.Printf("Removing %s device with UUID: %s\n", deviceType, uuid)
-
-	result, error := tx.Exec("DELETE FROM $1 WHERE uuid='$2';", table_name, uuid) //Default to NULL for id
-
-	if error != nil {
-		log.Println("Error occurred removing push device")
-		return false
-	}
-
-	ra, er := result.RowsAffected()
-	if er != nil {
-		return false
-	}
-
-	log.Printf("Removed %s Push Device. Rows Affected: %d\n", deviceType, ra)
-	if ra == 0 {
-		return false
-	}
-	tx.Commit()
-	return true
 }
 
 //Save a push device into DB
@@ -358,10 +292,12 @@ func SavePushDevice(uuid, deviceType string, preference int) bool{
 		return false
 	}
 
+	var UUIDLength int = 100
 	var table_name string
 
 	if strings.EqualFold(deviceType, "Android") {
 		table_name = "push_android"
+		UUIDLength = 1000
 	} else if strings.EqualFold(deviceType, "iOS") {
 		table_name = "push_ios"
 	} else {
@@ -370,22 +306,23 @@ func SavePushDevice(uuid, deviceType string, preference int) bool{
 		return false
 	}
 
-	log.Printf("Saving %s device with UUID: %s\n", deviceType, uuid)
+	log.Printf("Saving %s device with UUID: '%s'\n", deviceType, uuid)
 
-	result, error := tx.Exec(fmt.Sprintf("INSERT INTO %s (uuid, id) VALUES ('%s', %d);", table_name, uuid, preference)) //Default to NULL for id
+	//Yet Another Upsert.
+	query := fmt.Sprintf("BEGIN; CREATE TEMPORARY TABLE pushtemp(uuid VARCHAR(%d), id INTEGER); ", UUIDLength)
+	query += fmt.Sprintf("INSERT INTO pushtemp (uuid, id) VALUES ('%s', %d); ", uuid, preference)
+	query += fmt.Sprintf("LOCK TABLE %s IN EXCLUSIVE MODE; ", table_name)
+	query += fmt.Sprintf("UPDATE %s SET id = pushtemp.id FROM pushtemp WHERE pushtemp.uuid = %s.uuid; ", table_name, table_name)
+
+	query += fmt.Sprintf("INSERT INTO %s SELECT pushtemp.uuid, pushtemp.id FROM pushtemp LEFT OUTER JOIN %s ON (%s.uuid = pushtemp.uuid) WHERE %s.uuid IS NULL; ", table_name, table_name, table_name, table_name)
+	query += "COMMIT;"
+
+	fmt.Println(query)
+
+	_, error := tx.Exec(query)
 
 	if error != nil {
-		log.Println("Error occurred saving push device")
-		return false
-	}
-
-	ra, er := result.RowsAffected()
-	if er != nil {
-		return false
-	}
-
-	log.Printf("Saved %s Push Device. Rows Affected: %d\n", deviceType, ra)
-	if ra == 0 {
+		log.Println(error)
 		return false
 	}
 
@@ -393,8 +330,8 @@ func SavePushDevice(uuid, deviceType string, preference int) bool{
 	return true
 }
 
-//Helper method to get devices with a certain preference from a certain table
-func GetDevicesByPreference(preference int, table_name string) []string {
+//Get all push devices
+func GetAllPushDevices() []string {
 	tx, err := db.Begin()
 
 	if err != nil {
@@ -404,9 +341,7 @@ func GetDevicesByPreference(preference int, table_name string) []string {
 
 	var devices []string
 
-	rows, er := tx.Query(fmt.Sprintf("SELECT uuid FROM %s WHERE id=$1", table_name), preference)
-
-	defer rows.Close()
+	rows, er := tx.Query(fmt.Sprintf("SELECT uuid FROM %s UNION ALL SELECT uuid FROM %s;", "push_android", "push_ios"))
 
 	if er != nil {
 		log.Fatal(er)
@@ -418,6 +353,36 @@ func GetDevicesByPreference(preference int, table_name string) []string {
 		devices = append(devices, uuid)
 	}
 
+	rows.Close()
+	tx.Commit()
+
+	return devices
+}
+
+//Helper method to get devices with a certain preference from a certain table
+func GetPushDevicesByPreference(preference int, table_name string) []string {
+	tx, err := db.Begin()
+
+	if err != nil {
+		log.Fatal(err)
+		return []string{}
+	}
+
+	var devices []string
+
+	rows, er := tx.Query(fmt.Sprintf("SELECT uuid FROM %s WHERE id=$1;", table_name), preference)
+
+	if er != nil {
+		log.Fatal(er)
+	}
+
+	for rows.Next() {
+		var uuid string
+		err = rows.Scan(&uuid)
+		devices = append(devices, uuid)
+	}
+
+	rows.Close()
 	tx.Commit()
 
 	return devices
@@ -425,10 +390,10 @@ func GetDevicesByPreference(preference int, table_name string) []string {
 
 //Get Android devices with a certain preference
 func GetAndroidDevicesByPreference(preference int) []string {
-	return GetDevicesByPreference(preference, "push_android")
+	return GetPushDevicesByPreference(preference, "push_android")
 }
 
 //Get iOS devices with a certain preference
 func GetiOSDevicesByPreference(preference int) []string {
-	return GetDevicesByPreference(preference, "push_ios")
+	return GetPushDevicesByPreference(preference, "push_ios")
 }

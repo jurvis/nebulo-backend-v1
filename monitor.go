@@ -5,7 +5,9 @@ import (
 	"strconv"
 	"encoding/json"
 	"github.com/duncan/db"
+	"github.com/duncan/config"
 	"github.com/duncan/scraper"
+	"github.com/yvasiyarov/gorelic"
 	"os"
 	"log"
 	"fmt"
@@ -24,6 +26,7 @@ type NearbyCitiesResponse struct {
 	NearbyCities []NearbyCity	`json:"nearby_cities"`
 }
 
+//This is essentially the same as the struct in db.go but it has the timestamp as a formatted string.
 type NearbyCity struct {
 	Id int				`json:"id"`
 	Name string			`json:"city_name"`
@@ -57,9 +60,25 @@ type LegacyJob struct {
 	Wait chan db.LegacyCity
 }
 
+type SavePushJob struct {
+	Data PushInfo
+	Wait chan bool
+}
+
+type AllPushResponse struct {
+	Success bool			`json:"success"`
+	Devices []string		`json:"devices"`
+}
+
+type AllPushJob struct {
+	Wait chan []string
+}
+
 var jobs chan *Point
 var allcities_jobs chan *AllCitiesJob
 var legacy_jobs chan *LegacyJob
+var savepush_jobs chan *SavePushJob
+var allpush_jobs chan *AllPushJob
 
 func getJSONStatusMessage(msg string) []byte {
 	statusMap := map[string]string{"status": msg}
@@ -145,7 +164,7 @@ func getData(w http.ResponseWriter, r *http.Request) {
 					formattedResponse = append(formattedResponse, NearbyCity{db_city.Id, db_city.Name, db_city.AdvisoryCode, db_city.Data, db_city.Temp, time_scraped.UTC().Format("2006-01-02T15:04:05Z")})
 				}
 
-				var root NearbyCitiesResponse;
+				var root NearbyCitiesResponse
 				if len(nearbyLocs) != 0 {
 					root = NearbyCitiesResponse{Success : true, NearbyCities : formattedResponse}
 				} else {
@@ -191,20 +210,15 @@ func handlePushDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//Validation of preference
-	/*if (k.Push) && (len(k.Preference) == 0) {
-		w.Write(getJSONStatusMessage("invalid"))
-		return
-	}*/
-
 	var saveStatus bool
 
-	//Depending on what action to execute
-	if k.Push {
-		saveStatus = db.SavePushDevice(k.UUID, k.DeviceType, k.Preference)
-	} else {
-		saveStatus = db.RemovePushDevice(k.UUID, k.DeviceType)
+	if !k.Push {
+		k.Preference = -1
 	}
+
+	job := SavePushJob{Data: k, Wait: make(chan bool)}
+	savepush_jobs <- &job
+	saveStatus = <- job.Wait
 
 	//Send to database
 	if saveStatus {
@@ -214,20 +228,38 @@ func handlePushDevice(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+//Get all push devices
+func allPushDevices(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	job := AllPushJob{Wait: make(chan []string)}
+	allpush_jobs <- &job
+	var allPushDevices []string
+	allPushDevices = <- job.Wait
+	var response AllPushResponse
+	if len(allPushDevices) > 0 {
+		response = AllPushResponse{Success: true, Devices: allPushDevices}
+	} else {
+		response = AllPushResponse{Success: true, Devices: make([]string, 0)}
+	}
+	niceJson, _ := json.Marshal(response)
+	w.Write(niceJson)
+}
+
+//Worker to handle legacy jobs
 func legacy_worker() {
 	for j := range legacy_jobs {
 		result := *db.GetLegacyData()
 		j.Wait <- result
 	}
 }
-
+//Worker to handle all cities jobs
 func allcities_worker() {
 	for j := range allcities_jobs {
 		result := db.GetAllLocations()
 		j.Wait <- result
 	}
 }
-
+//Worker to handle normal jobs
 func worker() {
 	for j := range jobs {
 		result := db.GetNearbyLocations(j.Lat, j.Lng)
@@ -235,7 +267,53 @@ func worker() {
 	}
 }
 
-func main() {
+//Worker to handle allpush jobs
+func allpush_worker() {
+	for j := range allpush_jobs {
+		result := db.GetAllPushDevices()
+		j.Wait <- result
+	}
+}
+
+//Worker to handle savepush jobs
+func savepush_worker() {
+	for j := range savepush_jobs {
+		result := db.SavePushDevice(j.Data.UUID, j.Data.DeviceType, j.Data.Preference)
+		j.Wait <- result
+	}
+}
+
+//Create the jobs channels to receive jobs
+func CreateJobChannels() {
+	//Worker Pool
+	jobs = make(chan *Point, 100)
+	allcities_jobs = make(chan *AllCitiesJob, 500)
+	legacy_jobs = make(chan *LegacyJob, 100)
+	savepush_jobs = make(chan *SavePushJob, 100)
+	allpush_jobs = make(chan *AllPushJob, 100)
+}
+
+//Start the workers that will do the jobs
+func StartWorkers() {
+	for w := 1; w <= 20; w++ {
+		go worker()
+	}
+	for w := 1; w <= 10; w++ {
+		go allcities_worker()
+	}
+	for w := 1; w <= 20; w++ {
+		go legacy_worker()
+	}
+	for w := 1; w <= 10; w++ {
+		go savepush_worker()
+	}
+	for w := 1; w <= 5; w++ {
+		go allpush_worker()
+	}
+}
+
+//Setup the log
+func SetupLog() {
 	//Log output
 	pwd, _ := os.Getwd()
 	f, err := os.OpenFile(fmt.Sprintf(pwd + "/" + "server.log"), os.O_RDWR | os.O_CREATE | os.O_APPEND, 0666)
@@ -248,35 +326,34 @@ func main() {
 	log.SetFlags(log.Lshortfile | log.Ldate | log.Ltime)
 
 	defer f.Close()
+}
 
-	//Worker Pool
-	jobs = make(chan *Point, 100)
-	allcities_jobs = make(chan *AllCitiesJob, 500)
-	legacy_jobs = make(chan *LegacyJob, 100)
+func main() {
+	SetupLog()
 
-	for w := 1; w <= 20; w++ {
-		go worker()
-	}
-	for w := 1; w <= 20; w++ {
-		go allcities_worker()
-	}
-	for w := 1; w <= 20; w++ {
-		go legacy_worker()
-	}
+	CreateJobChannels()
+	StartWorkers()
 
 	//Initialise db
 	db.InitialiseDB()
 
 	fmt.Println("Nebulo Backend starting...")
 	log.Println("Backend started")
-	fmt.Println("If the server exits with obscure codes, check server.log")
+	fmt.Println("If the server exits with obscure codes, check server.log\n")
+
+	fmt.Println("Starting NewRelic agent...")
+	agent := gorelic.NewAgent()
+	agent.Verbose = true
+	agent.NewrelicLicense = config.NewRelicConfig().License.Key
+	agent.Run()
 
 	go scraper.ScrapeInterval()
-	http.HandleFunc("/", debug_only)
-	http.HandleFunc("/api/all", getAllCities)
-	http.HandleFunc("/api/nearby", getData)
-	http.HandleFunc("/get", legacy)
-	http.HandleFunc("/post", handlePushDevice)
+	http.HandleFunc("/", agent.WrapHTTPHandlerFunc(debug_only))
+	http.HandleFunc("/api/all", agent.WrapHTTPHandlerFunc(getAllCities))
+	http.HandleFunc("/api/nearby", agent.WrapHTTPHandlerFunc(getData))
+	http.HandleFunc("/internal/push/all", agent.WrapHTTPHandlerFunc(allPushDevices))
+	http.HandleFunc("/get", agent.WrapHTTPHandlerFunc(legacy))
+	http.HandleFunc("/post", agent.WrapHTTPHandlerFunc(handlePushDevice))
 	http.ListenAndServe(":5000", nil)
 
 	db.CloseDB()

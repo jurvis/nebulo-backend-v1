@@ -11,9 +11,6 @@ type DbCfg struct {
 		Dbname   string
 		Host     string
 	}
-	Redis struct {
-		Address string
-	}
 }
 
 type EmailCfg struct {
@@ -29,6 +26,12 @@ type EmailCfg struct {
 type PushCfg struct {
 	GCM struct {
 		ApiKey string
+	}
+}
+
+type NewRelicCfg struct {
+	License struct {
+		Key string
 	}
 }
 
@@ -59,6 +62,12 @@ func PushConfig() PushCfg {
 func EmailConfig() EmailCfg {
 	var cfg EmailCfg
 	gcfg.ReadFileInto(&cfg, "emailconfig.gcfg")
+	return cfg
+}
+
+func NewRelicConfig() NewRelicCfg {
+	var cfg NewRelicCfg
+	gcfg.ReadFileInto(&cfg, "newrelic.gcfg")
 	return cfg
 }
 
