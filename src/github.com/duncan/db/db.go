@@ -165,6 +165,8 @@ func GetNumCities() int {
 		log.Fatal(er)
 	}
 
+	tx.Commit()
+
 	return count
 }
 

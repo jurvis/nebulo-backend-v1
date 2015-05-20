@@ -43,7 +43,7 @@ func pushAPNS(uuids []string, msg string) {
 	if len(uuids) == 0 {
 		return
 	}
-	client := apns.NewClient("gateway.push.apple.com:2195", "NebuloCert.pem", "apns-prod.pem")
+	client := apns.NewClient("gateway.push.apple.com:2195", "PushCertificate.pem", "PushKey.pem")
 
 	payload := apns.NewPayload()
 	payload.Alert = msg

@@ -18,7 +18,6 @@ type PushInfo struct {
 	UUID		string
 	DeviceType	string
 	Preference	int
-	Push		bool
 }
 
 type NearbyCitiesResponse struct {
@@ -212,10 +211,6 @@ func handlePushDevice(w http.ResponseWriter, r *http.Request) {
 
 	var saveStatus bool
 
-	if !k.Push {
-		k.Preference = -1
-	}
-
 	job := SavePushJob{Data: k, Wait: make(chan bool)}
 	savepush_jobs <- &job
 	saveStatus = <- job.Wait
@@ -353,7 +348,7 @@ func main() {
 	http.HandleFunc("/api/nearby", agent.WrapHTTPHandlerFunc(getData))
 	http.HandleFunc("/internal/push/all", agent.WrapHTTPHandlerFunc(allPushDevices))
 	http.HandleFunc("/get", agent.WrapHTTPHandlerFunc(legacy))
-	http.HandleFunc("/post", agent.WrapHTTPHandlerFunc(handlePushDevice))
+	http.HandleFunc("/api/post/push", agent.WrapHTTPHandlerFunc(handlePushDevice))
 	http.ListenAndServe(":5000", nil)
 
 	db.CloseDB()
