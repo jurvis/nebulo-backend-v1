@@ -84,6 +84,8 @@ func ScrapeMalaysia(firstIndex int) ([]db.City, []ScrapeError) {
 		city_id := firstIndex + (i - 1)
 		//city_name := fmt.Sprintf("%s, %s", tds.Eq(1).Text(), state)
 		city_name := tds.Eq(1).Text()
+		//Comma Spacing
+		city_name = strings.Replace(city_name, ",", ", ", -1)
 		psi_value := ""
 		now := time.Now()
 		data_collect_hour := now.Hour()
