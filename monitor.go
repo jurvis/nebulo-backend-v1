@@ -7,6 +7,7 @@ import (
 	"github.com/duncan/db"
 	"github.com/duncan/config"
 	"github.com/duncan/scraper"
+	"github.com/duncan/push"
 	"github.com/yvasiyarov/gorelic"
 	"os"
 	"log"
@@ -18,6 +19,11 @@ type PushInfo struct {
 	UUID		string
 	DeviceType	string
 	Preference	int
+}
+
+type PushList struct {
+	Message string
+	Devices []string
 }
 
 type NearbyCitiesResponse struct {
@@ -240,6 +246,24 @@ func allPushDevices(w http.ResponseWriter, r *http.Request) {
 	w.Write(niceJson)
 }
 
+//Push to devices
+func pushToDevices(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	dec := json.NewDecoder(r.Body)
+	var k PushList
+	err := dec.Decode(&k)
+	if err != nil {
+		w.Write(getJSONStatusMessage("invalid"))
+		return
+	}
+	if len(k.Message) == 0 || len(k.Devices) == 0 {
+		w.Write(getJSONStatusMessage("invalid"))
+		return	
+	}
+	push.MultiPush(k.Devices, k.Message)
+	w.Write(getJSONStatusMessage("success"))
+}
+
 //Worker to handle legacy jobs
 func legacy_worker() {
 	for j := range legacy_jobs {
@@ -323,11 +347,32 @@ func SetupLog() {
 	defer f.Close()
 }
 
+//Code to run when program terminates.
+func cleanup() {
+	db.CloseDB()
+	close(jobs)
+	close(allcities_jobs)
+	close(legacy_jobs)
+}
+
+//Register to clean up when Ctrl+C is pressed
+func RegisterSignalCleanup() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func(){
+		for _ := range c {
+			cleanup()
+		}
+	}()
+}
+
 func main() {
 	SetupLog()
 
 	CreateJobChannels()
 	StartWorkers()
+
+	RegisterSignalCleanup()
 
 	//Initialise db
 	db.InitialiseDB()
@@ -338,6 +383,7 @@ func main() {
 
 	fmt.Println("Starting NewRelic agent...")
 	agent := gorelic.NewAgent()
+	agent.CollectHTTPStat = true
 	agent.Verbose = true
 	agent.NewrelicLicense = config.NewRelicConfig().License.Key
 	agent.Run()
@@ -346,13 +392,11 @@ func main() {
 	http.HandleFunc("/", agent.WrapHTTPHandlerFunc(debug_only))
 	http.HandleFunc("/api/all", agent.WrapHTTPHandlerFunc(getAllCities))
 	http.HandleFunc("/api/nearby", agent.WrapHTTPHandlerFunc(getData))
-	http.HandleFunc("/internal/push/all", agent.WrapHTTPHandlerFunc(allPushDevices))
+	http.HandleFunc("/internal/push/list", agent.WrapHTTPHandlerFunc(allPushDevices))
+	http.HandleFunc("/internal/push/push", agent.WrapHTTPHandlerFunc(pushToDevices))
 	http.HandleFunc("/get", agent.WrapHTTPHandlerFunc(legacy))
 	http.HandleFunc("/api/post/push", agent.WrapHTTPHandlerFunc(handlePushDevice))
 	http.ListenAndServe(":5000", nil)
 
-	db.CloseDB()
-	close(jobs)
-	close(allcities_jobs)
-	close(legacy_jobs)
+	cleanup()
 }

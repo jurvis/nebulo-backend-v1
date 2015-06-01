@@ -38,6 +38,22 @@ func Push(city db.City) {
 	}*/
 }
 
+//Push to UUIDs of multiple device types. Separates the UUID into device types and pushes.
+func MultiPush(uuids []string, msg string) {
+	uuids_ios := make([]string, 0)
+	uuids_android := make([]string, 0)
+
+	for i := 0; i < len(uuids); i++ {
+		if len(uuids[i]) == 64 {
+			uuids_ios = append(uuids_ios, uuids[i])
+		} else {
+			uuids_android = append(uuids_android, uuids[i])
+		}
+	}
+	go pushAPNS(uuids_ios, msg)
+	go pushGCM(uuids_android, msg)
+}
+
 //Push to iOS Devices
 func pushAPNS(uuids []string, msg string) {
 	if len(uuids) == 0 {
