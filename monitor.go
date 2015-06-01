@@ -10,6 +10,7 @@ import (
 	"github.com/duncan/push"
 	"github.com/yvasiyarov/gorelic"
 	"os"
+	"os/signal"
 	"log"
 	"fmt"
 	"time"
@@ -84,6 +85,9 @@ var allcities_jobs chan *AllCitiesJob
 var legacy_jobs chan *LegacyJob
 var savepush_jobs chan *SavePushJob
 var allpush_jobs chan *AllPushJob
+
+var f *os.File
+var f_err error
 
 func getJSONStatusMessage(msg string) []byte {
 	statusMap := map[string]string{"status": msg}
@@ -335,16 +339,15 @@ func StartWorkers() {
 func SetupLog() {
 	//Log output
 	pwd, _ := os.Getwd()
-	f, err := os.OpenFile(fmt.Sprintf(pwd + "/" + "server.log"), os.O_RDWR | os.O_CREATE | os.O_APPEND, 0666)
-	if err != nil {
-		log.Println("Cannot open log file for writing! Logs will print to console instead.")
+	f, f_err = os.OpenFile(fmt.Sprintf(pwd + "/" + "server.log"), os.O_RDWR | os.O_CREATE | os.O_APPEND, 0666)
+	if f_err != nil {
+		fmt.Println("Cannot open log file for writing! Logs will print to console instead.")
 	} else {
 		log.SetOutput(f)
+		fmt.Println("Set file as log output.")
 	}
 
 	log.SetFlags(log.Lshortfile | log.Ldate | log.Ltime)
-
-	defer f.Close()
 }
 
 //Code to run when program terminates.
@@ -353,6 +356,9 @@ func cleanup() {
 	close(jobs)
 	close(allcities_jobs)
 	close(legacy_jobs)
+	if f != nil {
+		f.Close()
+	}
 }
 
 //Register to clean up when Ctrl+C is pressed
@@ -360,7 +366,7 @@ func RegisterSignalCleanup() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	go func(){
-		for _ := range c {
+		for range c {
 			cleanup()
 		}
 	}()
@@ -368,7 +374,6 @@ func RegisterSignalCleanup() {
 
 func main() {
 	SetupLog()
-
 	CreateJobChannels()
 	StartWorkers()
 
@@ -377,16 +382,17 @@ func main() {
 	//Initialise db
 	db.InitialiseDB()
 
-	fmt.Println("Nebulo Backend starting...")
-	log.Println("Backend started")
-	fmt.Println("If the server exits with obscure codes, check server.log\n")
-
-	fmt.Println("Starting NewRelic agent...")
 	agent := gorelic.NewAgent()
 	agent.CollectHTTPStat = true
 	agent.Verbose = true
 	agent.NewrelicLicense = config.NewRelicConfig().License.Key
 	agent.Run()
+
+	fmt.Println("Nebulo Backend starting...")
+	log.Println("Backend started")
+	fmt.Println("If the server exits with obscure codes, check server.log\n")
+
+	fmt.Println("Starting NewRelic agent...")
 
 	go scraper.ScrapeInterval()
 	http.HandleFunc("/", agent.WrapHTTPHandlerFunc(debug_only))
