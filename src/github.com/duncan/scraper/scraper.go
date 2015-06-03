@@ -66,6 +66,18 @@ func ScrapeInterval() {
 		//Clear counters
 		start := time.Now()
 
+		fmt.Println("=====LEGACY SCRAPE=====")
+		log.Println("=====LEGACY SCRAPE=====")
+
+		legacyWeather, err := ScrapeLegacy()
+		if err == nil {
+			db.SaveLegacyData(legacyWeather)
+			fmt.Println("Saved legacy data\n")
+			log.Println("Saved legacy data\n")
+		} else {
+			log.Println(err)
+		}
+
 		fmt.Println("=====SCRAPER START=====")
 		log.Println("=====SCRAPER START=====")
 

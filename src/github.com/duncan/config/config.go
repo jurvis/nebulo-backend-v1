@@ -11,6 +11,9 @@ type DbCfg struct {
 		Dbname   string
 		Host     string
 	}
+	Redis struct {
+		Address string
+	}
 }
 
 type EmailCfg struct {

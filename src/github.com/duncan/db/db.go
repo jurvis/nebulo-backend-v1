@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 	"github.com/duncan/config"
-	//"gopkg.in/redis.v2"
+	"gopkg.in/redis.v2"
 	"database/sql"
 	_ "github.com/lib/pq"
 	"errors"
@@ -40,8 +40,7 @@ type LegacyCity struct {
 var db_config config.DbCfg = config.DbConfig()
 var db *sql.DB
 
-//var Redis_URLs *redis.Client = redis.NewClient(&redis.Options{Network:"tcp", Addr:db_config.Redis.Address, DB:0});
-//var Redis_DataHolder *redis.Client = redis.NewClient(&redis.Options{Network:"tcp", Addr:db_config.Redis.Address, DB:1});
+var redisClient *redis.Client
 
 var PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE string = db_config.Database.Username, db_config.Database.Password, db_config.Database.Dbname, "disable"
 
@@ -54,11 +53,14 @@ func InitialiseDB() {
 	database.SetMaxIdleConns(5)
 	
 	db = database
+
+	redisClient = redis.NewClient(&redis.Options{Network:"tcp", Addr:db_config.Redis.Address, DB:0})
 }
 
 //De-initialise the DB
 func CloseDB() {
 	db.Close()
+	redisClient.Close()
 }
 
 //Save data into DB
@@ -107,6 +109,21 @@ func SaveData(cities []City) {
 	tx.Commit()
 }
 
+func SaveLegacyData(data LegacyWeather) {
+	pm25_cmd := redisClient.Set("pm25", data.PM25)
+	if pm25_cmd.Err() != nil {
+		log.Printf(pm25_cmd.Err().Error())
+	}
+	psi_cmd := redisClient.Set("psi", data.PSI)
+	if psi_cmd.Err() != nil {
+		log.Printf(psi_cmd.Err().Error())
+	}
+	temp_cmd := redisClient.Set("temp", data.Temp)
+	if temp_cmd.Err() != nil {
+		log.Printf(temp_cmd.Err().Error())
+	}
+}
+
 //Return legacy status string. Not present in Nebulo 2.0+
 func getLegacyStatus(pm25 int) string {
 	if pm25 > 200 {
@@ -122,6 +139,16 @@ func getLegacyStatus(pm25 int) string {
 
 //Return Central, Singapore's data for legacy calls
 func GetLegacyData() *LegacyCity {
+	pm25, _ := redisClient.Get("pm25").Result()
+	psi, _ := redisClient.Get("psi").Result()
+	temp, _ := redisClient.Get("temp").Result()
+
+	pm25_int, _ := strconv.Atoi(pm25)
+	return &LegacyCity{Status: getLegacyStatus(pm25_int), Weather: LegacyWeather{PM25: pm25, PSI: psi, Temp: temp}}
+}
+
+//Return Central, Singapore's data for legacy calls
+/*func GetLegacyData() *LegacyCity {
 	tx, err := db.Begin()
 
 	if err != nil {
@@ -147,7 +174,7 @@ func GetLegacyData() *LegacyCity {
 	tx.Commit()
 
 	return nil
-}
+}*/
 
 //Return number of cities
 func GetNumCities() int {
