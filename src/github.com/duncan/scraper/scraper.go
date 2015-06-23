@@ -66,7 +66,7 @@ func ScrapeInterval() {
 		//Clear counters
 		start := time.Now()
 
-		fmt.Println("=====LEGACY SCRAPE=====")
+		/*fmt.Println("=====LEGACY SCRAPE=====")
 		log.Println("=====LEGACY SCRAPE=====")
 
 		legacyWeather, err := ScrapeLegacy()
@@ -76,7 +76,9 @@ func ScrapeInterval() {
 			log.Println("Saved legacy data\n")
 		} else {
 			log.Println(err)
-		}
+		}*/
+
+		//Legacy scrape is currently an AVG function on the five Singapore cities.
 
 		fmt.Println("=====SCRAPER START=====")
 		log.Println("=====SCRAPER START=====")

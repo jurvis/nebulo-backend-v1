@@ -138,17 +138,17 @@ func getLegacyStatus(pm25 int) string {
 }
 
 //Return Central, Singapore's data for legacy calls
-func GetLegacyData() *LegacyCity {
+/*func GetLegacyData() *LegacyCity {
 	pm25, _ := redisClient.Get("pm25").Result()
 	psi, _ := redisClient.Get("psi").Result()
 	temp, _ := redisClient.Get("temp").Result()
 
 	pm25_int, _ := strconv.Atoi(pm25)
 	return &LegacyCity{Status: getLegacyStatus(pm25_int), Weather: LegacyWeather{PM25: pm25, PSI: psi, Temp: temp}}
-}
+}*/
 
-//Return Central, Singapore's data for legacy calls
-/*func GetLegacyData() *LegacyCity {
+//Return average of Singapore's data for legacy calls
+func GetLegacyData() *LegacyCity {
 	tx, err := db.Begin()
 
 	if err != nil {
@@ -156,25 +156,19 @@ func GetLegacyData() *LegacyCity {
 		return nil
 	}
 
-	query, er := tx.Query("SELECT AVG(data) AS \"data\", AVG(temp) AS \"temp\" FROM data WHERE city_name LIKE '%Singapore';")
+	var data, temp float64
+	er := tx.QueryRow("SELECT AVG(data) AS \"data\", AVG(temp) AS \"temp\" FROM data WHERE city_name LIKE '%Singapore';").Scan(&data, &temp)
 
 	if er != nil {
 		return nil
 	}
 
-	defer query.Close()
-
-	for query.Next() {
-		var data, temp float64
-		query.Scan(&data, &temp)
-		tx.Commit()
-		return &LegacyCity{Status: getLegacyStatus(int(data)), Weather: LegacyWeather{PM25: strconv.Itoa(int(data)), PSI: "N/A", Temp: strconv.Itoa(int(temp))}}
-	}
+	return &LegacyCity{Status: getLegacyStatus(int(data)), Weather: LegacyWeather{PM25: strconv.Itoa(int(data)), PSI: "-", Temp: strconv.Itoa(int(temp))}}
 
 	tx.Commit()
 
 	return nil
-}*/
+}
 
 //Return number of cities
 func GetNumCities() int {
