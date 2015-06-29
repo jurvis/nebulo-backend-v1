@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 	"github.com/duncan/config"
-	"gopkg.in/redis.v2"
+	//"gopkg.in/redis.v2"
 	"database/sql"
 	_ "github.com/lib/pq"
 	"errors"
@@ -40,7 +40,7 @@ type LegacyCity struct {
 var db_config config.DbCfg = config.DbConfig()
 var db *sql.DB
 
-var redisClient *redis.Client
+//var redisClient *redis.Client
 
 var PQ_USER, PQ_PASS, PQ_DBNAME, PQ_SSLMODE string = db_config.Database.Username, db_config.Database.Password, db_config.Database.Dbname, "disable"
 
@@ -54,13 +54,13 @@ func InitialiseDB() {
 	
 	db = database
 
-	redisClient = redis.NewClient(&redis.Options{Network:"tcp", Addr:db_config.Redis.Address, DB:0})
+	//redisClient = redis.NewClient(&redis.Options{Network:"tcp", Addr:db_config.Redis.Address, DB:0})
 }
 
 //De-initialise the DB
 func CloseDB() {
 	db.Close()
-	redisClient.Close()
+	//redisClient.Close()
 }
 
 //Save data into DB
@@ -76,20 +76,16 @@ func SaveData(cities []City) {
 	query += "INSERT INTO newvals (id, city_name, data, temp, advisory, timestamp) VALUES "
 
 	for _, city := range cities {
-		//Overwrite existing Id if it exists.
-		older_entry, er := GetSavedData(city.Id)
-		id := city.Id
-		if er == nil {
-			if city.Data == -1 {
+		if city.Data == -1 {
+			older_entry, er := GetSavedData(city.Id)
+			if er == nil {
 				//Use older values
 				city.Data = older_entry.Data
 				city.AdvisoryCode = older_entry.AdvisoryCode
 				city.ScrapeTime = older_entry.ScrapeTime
 			}
-		} else if UseNextAvailableId() {
-			id = GetNextAvailableId()
 		}
-		query += fmt.Sprintf("(%d, '%s', %d, %d, %d, %d), ", id, city.Name, city.Data, city.Temp, city.AdvisoryCode, city.ScrapeTime)
+		query += fmt.Sprintf("(%d, '%s', %d, %d, %d, %d), ", city.Id, city.Name, city.Data, city.Temp, city.AdvisoryCode, city.ScrapeTime)
 	}
 
 	query = query[:len(query) - 2] //Remove the last ', '
@@ -109,7 +105,7 @@ func SaveData(cities []City) {
 	tx.Commit()
 }
 
-func SaveLegacyData(data LegacyWeather) {
+/*func SaveLegacyData(data LegacyWeather) {
 	pm25_cmd := redisClient.Set("pm25", data.PM25)
 	if pm25_cmd.Err() != nil {
 		log.Printf(pm25_cmd.Err().Error())
@@ -122,7 +118,7 @@ func SaveLegacyData(data LegacyWeather) {
 	if temp_cmd.Err() != nil {
 		log.Printf(temp_cmd.Err().Error())
 	}
-}
+}*/
 
 //Return legacy status string. Not present in Nebulo 2.0+
 func getLegacyStatus(pm25 int) string {
@@ -162,12 +158,9 @@ func GetLegacyData() *LegacyCity {
 	if er != nil {
 		return nil
 	}
-
-	return &LegacyCity{Status: getLegacyStatus(int(data)), Weather: LegacyWeather{PM25: strconv.Itoa(int(data)), PSI: "-", Temp: strconv.Itoa(int(temp))}}
-
+	
 	tx.Commit()
-
-	return nil
+	return &LegacyCity{Status: getLegacyStatus(int(data)), Weather: LegacyWeather{PM25: strconv.Itoa(int(data)), PSI: "-", Temp: strconv.Itoa(int(temp))}}
 }
 
 //Return number of cities
@@ -216,16 +209,18 @@ func GetSavedData(id int) (City, error) {
 		return City{}, errors.New("Error accessing db!")
 	}
 
+	var query string = fmt.Sprintf("SELECT * FROM data WHERE id=%d", id)
+
 	var city_name string
 	var data int
 	var temp int
 	var advisory int
 	var scrapetime int64
 
-	er := tx.QueryRow(`SELECT * FROM data WHERE id=$1`, id).Scan(&id, &city_name, &data, &temp, &advisory, &scrapetime)
+	er := tx.QueryRow(query).Scan(&id, &city_name, &data, &temp, &advisory, &scrapetime)
 
 	if er != nil {
-		log.Println(er)
+		log.Printf("Error running query '%s': %s\n", query, er)
 	}
 
 	tx.Commit()
@@ -340,7 +335,7 @@ func SavePushDevice(uuid, deviceType string, preference int) bool{
 	query += fmt.Sprintf("INSERT INTO %s SELECT pushtemp.uuid, pushtemp.id FROM pushtemp LEFT OUTER JOIN %s ON (%s.uuid = pushtemp.uuid) WHERE %s.uuid IS NULL; ", table_name, table_name, table_name, table_name)
 	query += "COMMIT;"
 
-	fmt.Println(query)
+	//fmt.Println(query)
 
 	_, error := tx.Exec(query)
 

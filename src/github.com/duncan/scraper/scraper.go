@@ -119,6 +119,12 @@ func ScrapeInterval() {
 		count += len(th)
 
 		for _, city := range allCities {
+			//Use existing Id if it exists.
+			_, er := db.GetSavedData(city.Id)
+			if (er != nil && db.UseNextAvailableId()) {
+				log.Printf("Couldn't find anything with id #%d\n", city.Id)
+				city.Id = db.GetNextAvailableId()
+			}
 			push.Push(city)
 		}
 
@@ -158,7 +164,7 @@ func GarbageCollection(allCities []db.City) []db.City {
 	var ret []db.City
 	for _, city := range allCities {
 		if (!contains(BLACKLIST, city.Name)) {
-			//Delete it
+			//Add it
 			ret = append(ret, city)
 		}
 	}

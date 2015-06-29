@@ -384,7 +384,7 @@ func main() {
 
 	agent := gorelic.NewAgent()
 	agent.CollectHTTPStat = true
-	agent.Verbose = true
+	//agent.Verbose = true
 	agent.NewrelicLicense = config.NewRelicConfig().License.Key
 	agent.Run()
 
