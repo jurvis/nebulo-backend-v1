@@ -1,5 +1,7 @@
-Nebulo
+Nebulo v1
 ======
+This repo is no longer maintained and contains _very_ bad Golang practices.
+
 ### What Is It?
 This is my first (tiny) web app written in Go. It uses goquery to scrape data from http://aqicn.org/ and stores is in a gkvlite persistent key-value store which can be accessed by the API layer to return a simple JSON response.
 
